@@ -355,6 +355,14 @@ private fun MarkdownPreview() = PreviewTheme {
 
             > A quote
 
+            - [x] done
+            - [ ] todo
+
+            | Service | Region | Status | Notes |
+            |---|---|---|---|
+            | api | eu-west-1 | ok | Deployed 2h ago, no errors since rollout |
+            | worker | us-east-1 | degraded | Queue backlog growing; consider scaling |
+
             ```
             fenced code
             ```
