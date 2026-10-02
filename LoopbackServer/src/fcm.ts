@@ -28,9 +28,23 @@ export class Fcm {
   }
 
   static async fromFile(path: string): Promise<Fcm> {
-    const account = (await Bun.file(path).json()) as ServiceAccount;
+    return Fcm.fromJson(await Bun.file(path).text(), path);
+  }
+
+  /** Parses a base64-encoded service-account JSON (handy for env vars on PaaS hosts). */
+  static fromBase64(encoded: string): Fcm {
+    return Fcm.fromJson(Buffer.from(encoded.trim(), "base64").toString("utf8"), "FIREBASE_SERVICE_ACCOUNT_B64");
+  }
+
+  static fromJson(text: string, label: string): Fcm {
+    let account: ServiceAccount;
+    try {
+      account = JSON.parse(text) as ServiceAccount;
+    } catch {
+      throw new Error(`${label} is not valid JSON`);
+    }
     if (!account.project_id || !account.client_email || !account.private_key) {
-      throw new Error(`${path} is not a Firebase service-account JSON`);
+      throw new Error(`${label} is not a Firebase service-account JSON`);
     }
     return new Fcm(account);
   }

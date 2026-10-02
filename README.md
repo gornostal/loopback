@@ -31,6 +31,7 @@ Push notifications need a Firebase project:
 1. Firebase console → create a project → add an Android app with package `name.gornostal.loopback`.
 2. Download `google-services.json` into `LoopbackAndroid/app/`.
 3. Project settings → Service accounts → *Generate new private key* → save as `LoopbackServer/service-account.json` and point `FIREBASE_SERVICE_ACCOUNT` at it.
+   On a host where you can't ship a file (Railway, etc.), set `FIREBASE_SERVICE_ACCOUNT_B64` to `base64 -w0 service-account.json` instead.
 
 Without a service account the server still works; it just logs that it can't push, and the app shows requests when you open or pull-to-refresh it.
 

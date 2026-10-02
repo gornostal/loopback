@@ -7,6 +7,7 @@ const PORT = Number(process.env.PORT ?? 8787);
 const API_KEY = process.env.LOOPBACK_API_KEY;
 const DATA_DIR = process.env.DATA_DIR ?? "./data";
 const SERVICE_ACCOUNT = process.env.FIREBASE_SERVICE_ACCOUNT;
+const SERVICE_ACCOUNT_B64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
 const MAX_WAIT_SECONDS = 600;
 
 if (!API_KEY) {
@@ -15,11 +16,19 @@ if (!API_KEY) {
 }
 
 const store = new Store(DATA_DIR);
-const fcm = SERVICE_ACCOUNT && (await Bun.file(SERVICE_ACCOUNT).exists())
-  ? await Fcm.fromFile(SERVICE_ACCOUNT)
-  : null;
+const fcm = await loadFcm();
 if (fcm) console.log(`FCM enabled for project ${fcm.projectId}`);
-else console.warn("FCM disabled: FIREBASE_SERVICE_ACCOUNT not set or file missing. Requests will not push.");
+else {
+  console.warn(
+    "FCM disabled: set FIREBASE_SERVICE_ACCOUNT_B64 (base64 JSON) or FIREBASE_SERVICE_ACCOUNT (file path). Requests will not push.",
+  );
+}
+
+async function loadFcm(): Promise<Fcm | null> {
+  if (SERVICE_ACCOUNT_B64) return Fcm.fromBase64(SERVICE_ACCOUNT_B64);
+  if (SERVICE_ACCOUNT && (await Bun.file(SERVICE_ACCOUNT).exists())) return Fcm.fromFile(SERVICE_ACCOUNT);
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Long-poll waiters: request id -> resolvers waiting for a terminal state.
