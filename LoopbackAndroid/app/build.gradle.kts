@@ -16,7 +16,7 @@ if (googleServicesFile.exists()) {
 
 android {
     namespace = "name.gornostal.loopback"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "name.gornostal.loopback"
