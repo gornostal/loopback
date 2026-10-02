@@ -9,7 +9,7 @@ Loopback sends your question to the user's phone as a notification. They see you
 a list of options you propose (like a Claude Code `AskUserQuestion` prompt), and an optional
 "my answer" free-text field. Their reply comes back to you as JSON.
 
-Script: `node {{SKILL_DIR}}/scripts/loopback.mjs` (plain Node, no dependencies).
+Script: `python3 {{SKILL_DIR}}/loopback.py` (plain Python 3, no dependencies). Run it without arguments for help.
 Config comes from `LOOPBACK_URL` / `LOOPBACK_AGENT_KEY` or `~/.config/loopback/config.json`.
 
 ## When to use
@@ -26,7 +26,7 @@ at the terminal, prefer that; use Loopback when they have stepped away or asked 
 ## Ask and wait (default)
 
 ```sh
-node {{SKILL_DIR}}/scripts/loopback.mjs ask "Deploy api v2.3 to production?" \
+python3 {{SKILL_DIR}}/loopback.py ask "Deploy api v2.3 to production?" \
   --context "CI is green on main. 1 migration, ~2 min downtime." \
   --option "Deploy now :: run the migration and roll out" \
   --option "Deploy tonight :: 02:00 UTC window" \
@@ -53,7 +53,7 @@ Output on stdout:
 `answer.selected` holds the labels they chose (may be empty if they only typed), `answer.text` holds
 their free-text comment or `null`. Treat text as overriding or refining the selection.
 
-Exit codes: **0** answered · **2** cancelled · **3** still pending when the timeout hit · **1** error.
+Exit codes: **0** answered · **2** cancelled · **3** still pending when the timeout hit · **1** error or bad usage.
 
 ## Polling instead of blocking
 
@@ -62,7 +62,7 @@ Humans can take minutes or hours. Two ways to avoid tying up your turn:
 1. **Timed out (exit 3)?** The request is still live. Re-run `wait` with the id printed in the JSON:
 
    ```sh
-   node {{SKILL_DIR}}/scripts/loopback.mjs wait <id> --timeout 300
+   python3 {{SKILL_DIR}}/loopback.py wait <id> --timeout 300
    ```
 
    Repeat until exit code is 0 or 2. Between polls, do work that doesn't depend on the answer.
@@ -70,14 +70,17 @@ Humans can take minutes or hours. Two ways to avoid tying up your turn:
 2. **Fire and continue.** Create the request without blocking, keep working, and check back:
 
    ```sh
-   node {{SKILL_DIR}}/scripts/loopback.mjs ask "…" --option "…" --no-wait   # prints {id, status: "pending"}
-   node {{SKILL_DIR}}/scripts/loopback.mjs status <id>                      # instant, exit 3 if still pending
-   node {{SKILL_DIR}}/scripts/loopback.mjs wait <id> --timeout 120          # block up to 2 min
+   python3 {{SKILL_DIR}}/loopback.py ask "…" --option "…" --no-wait   # prints {id, status: "pending"}
+   python3 {{SKILL_DIR}}/loopback.py status <id>                      # instant, exit 3 if still pending
+   python3 {{SKILL_DIR}}/loopback.py wait <id> --timeout 120          # block up to 2 min
    ```
 
 Never fabricate an answer when the status is `pending`; either keep polling, do independent work,
 or tell the user you're still waiting. A `cancelled` status means the request was withdrawn:
 stop waiting and don't act on it.
+
+If the question no longer matters (you found the answer yourself, or the task changed), withdraw it so
+the notification disappears from their phone: `python3 {{SKILL_DIR}}/loopback.py cancel <id>`.
 
 ## Writing a good question
 

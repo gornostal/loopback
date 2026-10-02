@@ -17,7 +17,7 @@ The prompt the phone shows mirrors Claude Code's `AskUserQuestion`: a title, opt
 |---|---|
 | `LoopbackServer/` | Bun + TypeScript API server. SQLite storage, FCM push, long-polling. Zero runtime dependencies. |
 | `LoopbackAndroid/` | Kotlin / Jetpack Compose app. Inbox, request detail, settings, push handling. |
-| `LoopbackCLI/` | `loopback` CLI: installs the **Loopback skill** into Claude Code and Codex, and lets you ask from a terminal. |
+| `LoopbackCLI/` | `install.py`: installs the **Loopback skill** (`SKILL.md` + `loopback.py`) into Claude Code and Codex. Plain Python, no dependencies. |
 
 ## Server
 
@@ -101,20 +101,20 @@ Request object (returned everywhere):
 The easiest path is the skill. Install it once:
 
 ```sh
-cd LoopbackCLI && bun install && bun link      # puts `loopback` on your PATH
-loopback install --url https://loopback.example.com --key <LOOPBACK_AGENT_KEY>
+cd LoopbackCLI && ./install.py
 ```
 
-This writes `~/.config/loopback/config.json` and installs `SKILL.md` + `scripts/loopback.mjs` into
-`~/.claude/skills/loopback/` (Claude Code) and `~/.codex/skills/loopback/` (Codex). Use `--claude` or
-`--codex` to pick one, `--project` to install into the current repo's `.claude/skills` / `.codex/skills`
-instead, and `loopback uninstall` to remove.
+It asks for the server base URL, the agent key (`LOOPBACK_AGENT_KEY`), which agents (Claude, Codex or both)
+and the scope: **Global** (`~/.claude/skills/loopback`, `~/.codex/skills/loopback`) or **This project**
+(`./.claude/skills/loopback`, `./.codex/skills/loopback`, relative to the current directory). The URL and key
+go to `~/.config/loopback/config.json` (mode 600), never into the skill dir, so a project-scoped install
+is safe to commit. Re-run it to update; it offers the saved values as defaults.
 
-The skill tells the agent when to reach for you and how to call the bundled script, which is plain Node
-with no dependencies:
+The skill tells the agent when to reach for you and how to call the bundled script, which is plain
+Python 3 with no dependencies (run it without arguments for help):
 
 ```sh
-node ~/.claude/skills/loopback/scripts/loopback.mjs ask "Deploy api v2.3?" \
+python3 ~/.claude/skills/loopback/loopback.py ask "Deploy api v2.3?" \
   --context "CI green. 1 migration." \
   --option "Deploy now :: run the migration and roll out" --option "Hold" \
   --source claude-code --timeout 300
@@ -128,7 +128,7 @@ Humans can be slow, so the script supports two modes:
 - **Polling**: `ask … --no-wait` returns the id immediately; the agent keeps working and calls
   `status <id>` (instant) or `wait <id>` (blocks) later.
 
-The same commands work from your shell: `loopback ask "Ping?" --option Pong`.
+`cancel <id>` withdraws a pending request. The same commands work from your shell.
 
 Without the CLI, plain curl works too (blocks up to 5 min):
 
