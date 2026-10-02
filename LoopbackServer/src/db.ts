@@ -118,6 +118,28 @@ export class Store {
     return this.getRequest(id);
   }
 
+  /**
+   * Deletes resolved (answered/cancelled) requests that are older than `maxAgeMs` or outside the
+   * most recent `keep`. Pending requests are never touched: agents may still be waiting on them.
+   * Returns the number of rows removed.
+   */
+  pruneHistory(maxAgeMs: number, keep: number): number {
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString();
+    const result = this.db
+      .query(
+        `DELETE FROM requests
+         WHERE status != 'pending'
+           AND (
+             created_at < ?
+             OR id NOT IN (
+               SELECT id FROM requests WHERE status != 'pending' ORDER BY created_at DESC LIMIT ?
+             )
+           )`,
+      )
+      .run(cutoff, keep);
+    return result.changes;
+  }
+
   upsertDevice(token: string, platform: string, name: string | null): Device {
     const createdAt = new Date().toISOString();
     this.db

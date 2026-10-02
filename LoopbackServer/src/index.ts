@@ -10,6 +10,9 @@ const DATA_DIR = process.env.DATA_DIR ?? "./data";
 const SERVICE_ACCOUNT = process.env.FIREBASE_SERVICE_ACCOUNT;
 const SERVICE_ACCOUNT_B64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
 const MAX_WAIT_SECONDS = 600;
+const HISTORY_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000; // ~2 months
+const HISTORY_KEEP = 50;
+const PRUNE_INTERVAL_MS = 60 * 1000;
 
 if (!APP_KEY || !AGENT_KEY) {
   console.error("LOOPBACK_APP_KEY and LOOPBACK_AGENT_KEY must be set. Copy .env.example to .env and set two secrets.");
@@ -35,6 +38,23 @@ async function loadFcm(): Promise<Fcm | null> {
   if (SERVICE_ACCOUNT && (await Bun.file(SERVICE_ACCOUNT).exists())) return Fcm.fromFile(SERVICE_ACCOUNT);
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// History retention: every minute, drop answered/cancelled requests older than
+// HISTORY_MAX_AGE_MS and keep at most HISTORY_KEEP of the rest.
+// ---------------------------------------------------------------------------
+
+function pruneHistory() {
+  try {
+    const removed = store.pruneHistory(HISTORY_MAX_AGE_MS, HISTORY_KEEP);
+    if (removed > 0) console.log(`Pruned ${removed} old request(s) from history`);
+  } catch (err) {
+    console.error("History prune failed:", err);
+  }
+}
+
+pruneHistory();
+setInterval(pruneHistory, PRUNE_INTERVAL_MS).unref();
 
 // ---------------------------------------------------------------------------
 // Long-poll waiters: request id -> resolvers waiting for a terminal state.
