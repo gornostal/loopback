@@ -38,7 +38,9 @@ python3 {{SKILL_DIR}}/loopback.py ask "Deploy api v2.3 to production?" \
 
 - `--option "Label :: description"` — repeat for each choice; description is optional. Order them by
   how likely they are; put your recommendation first and say so in its description.
-- `--multi` — let the user pick several options.
+- `--multi` — let the user pick several options (checkboxes instead of radio buttons). Use it when the
+  choices aren't exclusive: "Which of these should I include?", "Which files may I delete?". Without it
+  the phone accepts exactly one pick.
 - `--no-text` — hide the free-text field (default is to show it so they can answer in their own words).
 - `--context` — markdown. Give the facts they need to decide in a few lines; headers, lists, code and
   quotes render.

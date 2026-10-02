@@ -63,7 +63,7 @@ Request ids are 128 random bits encoded in base58 (about 22 chars, e.g. `7Xq9KfJ
 |---|---|---|
 | `GET` | `/api/app/requests?status=pending&limit=100` | List. `status` = `pending` \| `answered` \| `cancelled` \| `all`, `limit` ≤ 500. Returns `{ "requests": [...] }`. |
 | `GET` | `/api/app/requests/:id` | Fetch one. |
-| `POST` | `/api/app/requests/:id/answer` | `{ "selected": ["Deploy"], "text": "but watch the logs" }`. Wakes any agent waiting on it. `409` if no longer pending. |
+| `POST` | `/api/app/requests/:id/answer` | `{ "selected": ["Deploy"], "text": "but watch the logs" }`. `selected` must be labels from the request's `options`; more than one only when `multiSelect` is true. Wakes any agent waiting on it. `400` on an unknown label or too many picks, `409` if no longer pending. |
 | `POST` | `/api/app/devices` | `{ "token", "platform", "name" }`: register an FCM token. The app does this on its own. |
 | `GET` | `/api/app/devices` | List registered devices (tokens truncated). |
 
@@ -79,7 +79,7 @@ Create body:
     { "label": "Deploy", "description": "Ship it now" },
     { "label": "Hold" }
   ],
-  "multiSelect": false,                        // default false
+  "multiSelect": false,                        // default false; true → checkboxes, answer.selected may hold several labels
   "allowFreeText": true,                       // default true → shows "My answer" field
   "source": "deploy-bot"                       // shown in the inbox and notification
 }

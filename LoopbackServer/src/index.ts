@@ -214,6 +214,26 @@ function validateCreate(body: unknown): CreateRequestBody {
   };
 }
 
+/**
+ * Checks the labels the phone picked against the request: every label must be one of its options,
+ * and a single-select request takes at most one. Duplicates are dropped, order follows the request's options.
+ */
+function validateSelection(request: LoopbackRequest, raw: unknown): string[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || !raw.every((s) => typeof s === "string")) {
+    throw new HttpError(400, "`selected` must be an array of option labels");
+  }
+  const picked = new Set(raw as string[]);
+  const labels = request.options.map((o) => o.label);
+  for (const label of picked) {
+    if (!labels.includes(label)) throw new HttpError(400, `Unknown option: ${label}`);
+  }
+  if (!request.multiSelect && picked.size > 1) {
+    throw new HttpError(400, "This request allows only one selected option");
+  }
+  return labels.filter((l) => picked.has(l));
+}
+
 function getOr404(id: string): LoopbackRequest {
   const req = store.getRequest(id);
   if (!req) throw new HttpError(404, "Request not found");
@@ -304,9 +324,9 @@ const server = Bun.serve({
 
     "/api/app/requests/:id/answer": {
       POST: app(async (req) => {
-        getOr404(req.params.id);
+        const current = getOr404(req.params.id);
         const body = await readJson<{ selected?: unknown; text?: unknown }>(req);
-        const selected = Array.isArray(body.selected) ? body.selected.filter((s) => typeof s === "string") : [];
+        const selected = validateSelection(current, body.selected);
         const text = typeof body.text === "string" && body.text.trim() ? body.text.trim() : undefined;
         if (selected.length === 0 && !text) throw new HttpError(400, "Pick an option or type an answer");
         const answered = store.answerRequest(req.params.id, { selected, text });
