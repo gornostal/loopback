@@ -1,5 +1,7 @@
 # Loopback
 
+<img src="assets/logo.png" alt="Loopback logo" width="128" align="right">
+
 Human-in-the-loop for AI agents. An agent asks a question, your phone buzzes, you tap an option (or type your own answer), the agent carries on.
 
 ```
