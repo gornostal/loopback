@@ -20,7 +20,7 @@ Flow: an agent `POST`s a request (title, markdown context, options, optional fre
 - `LoopbackCLI` - Python skill installer and the skill itself. Standard library only, no deps.
   - `install.py` — interactive: prompts for server URL, agent key, agents (Claude / Codex), scope (global / current dir); writes the config and copies the skill.
   - `skill/SKILL.md` — the skill template; `{{SKILL_DIR}}` is replaced with the install path. Installed to `~/.claude/skills/loopback` and `~/.codex/skills/loopback` (or `./.claude|.codex/skills/loopback` for project scope).
-  - `skill/loopback.py` — the single script agents run (`ask` / `status` / `cancel`). `ask` is run in the background: it creates the request and blocks until answered, dismissed or `--timeout` (default 12 h, request stays open); on SIGTERM it withdraws the request. No args → help on stderr, exit 1.
+  - `skill/loopback.py` — the single script agents run (`ask` / `wait` / `status` / `cancel`). No args → help on stderr, exit 1.
   - Config: `~/.config/loopback/config.json` or `LOOPBACK_URL` + `LOOPBACK_AGENT_KEY` (`{"url","agentKey"}`).
 
 # Conventions

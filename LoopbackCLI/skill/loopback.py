@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Loopback: ask a human a question over HTTP and block until they answer.
-
-Meant to be run in the background by an agent, which gets notified when the process exits.
+"""Loopback: ask a human a question over HTTP and wait for (or poll for) the answer.
 
 Plain Python >= 3.8, standard library only. Copied verbatim into agents' skill dirs by install.py.
 
@@ -12,7 +10,6 @@ Uses the server's agent API: it can create requests and follow them by id, not l
 import argparse
 import json
 import os
-import signal
 import sys
 import time
 import urllib.error
@@ -23,27 +20,22 @@ CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".config", "loopback", "conf
 
 # Longest single HTTP long-poll; the server caps at 600 s and we stay under proxies' idle limits.
 POLL_CHUNK_SECONDS = 120
-# Default time "ask" blocks for; the request stays answerable after that.
-DEFAULT_TIMEOUT_SECONDS = 12 * 60 * 60
-# Transient network failures while waiting: retry with backoff for up to this long before giving up.
-RETRY_WINDOW_SECONDS = 10 * 60
 
 EXIT_ANSWERED, EXIT_ERROR, EXIT_CANCELLED, EXIT_PENDING = 0, 1, 2, 3
 
 EPILOG = """\
 examples:
-  loopback.py ask "Deploy api v2.3?" --context "CI green. 1 migration." \
-      --option "Deploy now :: run the migration and roll out" --option "Hold" \
-      --source my-project
+  loopback.py ask "Deploy api v2.3?" --context "CI green. 1 migration." \\
+      --option "Deploy now :: run the migration and roll out" --option "Hold" \\
+      --source my-project --timeout 300
+  loopback.py ask "Merge PR #42?" --option Merge --option "Request changes" --no-wait
+  loopback.py wait <id> --timeout 300
   loopback.py status <id>
   loopback.py cancel <id>
 
-"ask" blocks until the human answers, dismisses the request, or --timeout elapses
-(default 12 h). Run it in the background. On timeout the request stays open; check it
-later with "status <id>". If the process is killed, the request is withdrawn.
-
 Prints JSON {id, status, title, answer?} on stdout.
-Exit codes: 0 answered · 2 cancelled · 3 timed out (still pending) · 1 error or bad usage
+Exit codes: 0 answered (or created with --no-wait) · 2 cancelled ·
+            3 still pending (re-run "wait <id>") · 1 error or bad usage
 
 Config: LOOPBACK_URL + LOOPBACK_AGENT_KEY, or %s {"url", "agentKey"}.
 """ % CONFIG_PATH
@@ -99,37 +91,16 @@ def request_path(request_id, suffix=""):
 
 
 def wait_for_answer(config, request_id, timeout_seconds):
-    """Long-polls until the request is answered/cancelled or timeout_seconds elapse.
-
-    Transient network errors are retried with backoff; the process may be alive for hours.
-    """
+    """Long-polls until the request is answered/cancelled or timeout_seconds elapse."""
     deadline = time.monotonic() + timeout_seconds
     request = call(config, "GET", request_path(request_id))
-    first_failure = None
     while request["status"] == "pending":
         remaining = int(deadline - time.monotonic() + 0.999)
         if remaining <= 0:
             break
         chunk = min(POLL_CHUNK_SECONDS, remaining)
-        try:
-            request = call(config, "GET", request_path(request_id, "/wait?timeout=%d" % chunk), timeout=chunk + 30)
-            first_failure = None
-        except LoopbackError as e:
-            now = time.monotonic()
-            first_failure = first_failure or now
-            if now - first_failure > RETRY_WINDOW_SECONDS:
-                raise
-            print("Loopback: %s; retrying..." % e, file=sys.stderr)
-            time.sleep(min(30, remaining))
+        request = call(config, "GET", request_path(request_id, "/wait?timeout=%d" % chunk), timeout=chunk + 30)
     return request
-
-
-def cancel_quietly(config, request_id):
-    """Best-effort withdraw; the request may already be answered (409), which is fine."""
-    try:
-        return call(config, "DELETE", request_path(request_id))
-    except LoopbackError:
-        return None
 
 
 def parse_option(raw):
@@ -169,23 +140,15 @@ def cmd_ask(config, args):
         "source": args.source,
     }
     created = call(config, "POST", "/api/agent/requests", {k: v for k, v in body.items() if v is not None})
-    request_id = created["id"]
-    print('Loopback: asked "%s" (id %s); waiting up to %ds...' % (args.title, request_id, args.timeout), file=sys.stderr)
+    if args.no_wait:
+        emit(created)
+        return EXIT_ANSWERED
+    print('Loopback: asked "%s" (id %s); waiting up to %ds...' % (args.title, created["id"], args.timeout), file=sys.stderr)
+    return emit(wait_for_answer(config, created["id"], args.timeout))
 
-    def on_signal(signum, _frame):
-        print("Loopback: got signal %d; withdrawing the request." % signum, file=sys.stderr)
-        cancel_quietly(config, request_id)
-        sys.exit(EXIT_CANCELLED)
 
-    for sig in (signal.SIGTERM, signal.SIGINT, getattr(signal, "SIGHUP", None)):
-        if sig is not None:
-            signal.signal(sig, on_signal)
-
-    request = wait_for_answer(config, request_id, args.timeout)
-    if request["status"] == "pending":
-        print('Loopback: no answer after %ds; the request stays open. Check later with "status %s".'
-              % (args.timeout, request_id), file=sys.stderr)
-    return emit(request)
+def cmd_wait(config, args):
+    return emit(wait_for_answer(config, args.id, args.timeout))
 
 
 def cmd_status(config, args):
@@ -211,7 +174,7 @@ def build_parser():
     )
     sub = parser.add_subparsers(dest="command", metavar="<command>", parser_class=Parser)
 
-    ask = sub.add_parser("ask", help="create a request and block until it is answered (run in the background)")
+    ask = sub.add_parser("ask", help="create a request and (by default) wait for the answer")
     ask.add_argument("title", help="one short question; the notification headline")
     ask.add_argument("--context", help="markdown with the facts needed to decide")
     ask.add_argument("--option", action="append", default=[], metavar='"LABEL :: DESCRIPTION"',
@@ -219,11 +182,16 @@ def build_parser():
     ask.add_argument("--multi", action="store_true", help="let the user pick several options")
     ask.add_argument("--no-text", action="store_true", help='hide the free-text "my answer" field')
     ask.add_argument("--source", default="agent", help="who is asking, ideally the project name; shown in the inbox (default: agent)")
-    ask.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT_SECONDS, metavar="SECONDS",
-                     help="stop waiting after this long; the request stays open (default: %d = 12 h)" % DEFAULT_TIMEOUT_SECONDS)
+    ask.add_argument("--timeout", type=int, default=300, metavar="SECONDS", help="how long to block (default: 300)")
+    ask.add_argument("--no-wait", action="store_true", help="print the new request's id and return immediately")
     ask.set_defaults(func=cmd_ask)
 
-    status = sub.add_parser("status", help="current state of a request (exit 3 if still pending)")
+    wait = sub.add_parser("wait", help="block until a request is answered or cancelled")
+    wait.add_argument("id")
+    wait.add_argument("--timeout", type=int, default=300, metavar="SECONDS", help="how long to block (default: 300)")
+    wait.set_defaults(func=cmd_wait)
+
+    status = sub.add_parser("status", help="current state of a request, instantly")
     status.add_argument("id")
     status.set_defaults(func=cmd_status)
 
@@ -249,7 +217,7 @@ def main(argv):
         print("Loopback error: %s" % e, file=sys.stderr)
         return EXIT_ERROR
     except KeyboardInterrupt:
-        return EXIT_ERROR  # before "ask" installs its handler
+        return EXIT_ERROR
 
 
 if __name__ == "__main__":

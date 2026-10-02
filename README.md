@@ -111,22 +111,24 @@ go to `~/.config/loopback/config.json` (mode 600), never into the skill dir, so 
 is safe to commit. Re-run it to update; it offers the saved values as defaults.
 
 The skill tells the agent when to reach for you and how to call the bundled script, which is plain
-Python 3 with no dependencies (run it without arguments for help). The agent runs `ask` in the background and
-gets notified when it exits:
+Python 3 with no dependencies (run it without arguments for help):
 
 ```sh
 python3 ~/.claude/skills/loopback/loopback.py ask "Deploy api v2.3?" \
   --context "CI green. 1 migration." \
   --option "Deploy now :: run the migration and roll out" --option "Hold" \
-  --source claude-code
+  --source claude-code --timeout 300
 # → {"id":"…","status":"answered","title":"…","answer":{"selected":["Deploy now"],"text":"watch error rates"}}
 ```
 
-The script's lifetime is the question's lifetime. `ask` long-polls until you answer and exits 0 with the
-answer, 2 if you dismissed the request from the phone, or 3 when `--timeout` elapses (default 12 hours).
-A timed-out request stays open, so the agent can still pick up the answer with `status <id>` or withdraw it
-with `cancel <id>`. If the agent kills the process, the request is withdrawn so the notification leaves your
-phone. The same commands work from your shell.
+Humans can be slow, so the script supports two modes:
+
+- **Blocking**: `ask … --timeout 300` long-polls and exits 0 with the answer, 2 if cancelled, or 3 if still
+  pending. On 3 the agent re-runs `wait <id> --timeout 300` until it gets an answer.
+- **Polling**: `ask … --no-wait` returns the id immediately; the agent keeps working and calls
+  `status <id>` (instant) or `wait <id>` (blocks) later.
+
+`cancel <id>` withdraws a pending request. The same commands work from your shell.
 
 Without the CLI, plain curl works too (blocks up to 5 min):
 
