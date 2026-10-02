@@ -1,6 +1,5 @@
 package name.gornostal.loopback.ui
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,21 +39,47 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import name.gornostal.loopback.MainViewModel
 import name.gornostal.loopback.api.LoopbackRequest
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InboxScreen(viewModel: MainViewModel) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    InboxContent(
+        pending = viewModel.pending,
+        history = viewModel.history,
+        loading = viewModel.loading,
+        error = viewModel.error,
+        onClearError = viewModel::clearError,
+        onRefresh = viewModel::refresh,
+        onOpenSettings = viewModel::showSettings,
+        onOpenRequest = viewModel::openRequest,
+    )
+}
+
+/** Stateless inbox UI; [InboxScreen] wires it to the ViewModel, previews feed it sample data. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InboxContent(
+    pending: List<LoopbackRequest>,
+    history: List<LoopbackRequest>,
+    loading: Boolean,
+    error: String?,
+    onClearError: () -> Unit,
+    onRefresh: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenRequest: (id: String) -> Unit,
+    initialTab: Int = 0,
+) {
+    var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     val snackbar = remember { SnackbarHostState() }
 
-    LaunchedEffect(viewModel.error) {
-        val message = viewModel.error ?: return@LaunchedEffect
+    LaunchedEffect(error) {
+        val message = error ?: return@LaunchedEffect
         snackbar.showSnackbar(message)
-        viewModel.clearError()
+        onClearError()
     }
 
     Scaffold(
@@ -62,7 +87,7 @@ fun InboxScreen(viewModel: MainViewModel) {
             TopAppBar(
                 title = { Text("Loopback") },
                 actions = {
-                    IconButton(onClick = viewModel::showSettings) {
+                    IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 },
@@ -73,15 +98,15 @@ fun InboxScreen(viewModel: MainViewModel) {
         Column(Modifier.padding(padding).fillMaxSize()) {
             TabRow(selectedTabIndex = tab) {
                 Tab(selected = tab == 0, onClick = { tab = 0 }, text = {
-                    val n = viewModel.pending.size
+                    val n = pending.size
                     Text(if (n > 0) "Pending ($n)" else "Pending")
                 })
                 Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("History") })
             }
-            val items = if (tab == 0) viewModel.pending else viewModel.history
+            val items = if (tab == 0) pending else history
             PullToRefreshBox(
-                isRefreshing = viewModel.loading,
-                onRefresh = viewModel::refresh,
+                isRefreshing = loading,
+                onRefresh = onRefresh,
                 modifier = Modifier.fillMaxSize(),
             ) {
                 if (items.isEmpty()) {
@@ -96,7 +121,7 @@ fun InboxScreen(viewModel: MainViewModel) {
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         items(items, key = { it.id }) { request ->
-                            RequestCard(request, onClick = { viewModel.openRequest(request.id) })
+                            RequestCard(request, onClick = { onOpenRequest(request.id) })
                         }
                     }
                 }
@@ -115,7 +140,7 @@ private fun EmptyState(text: String) {
                     text,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    textAlign = TextAlign.Center,
                 )
             }
         }
@@ -123,7 +148,7 @@ private fun EmptyState(text: String) {
 }
 
 @Composable
-private fun RequestCard(request: LoopbackRequest, onClick: () -> Unit) {
+internal fun RequestCard(request: LoopbackRequest, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),

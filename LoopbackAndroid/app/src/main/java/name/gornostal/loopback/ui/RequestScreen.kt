@@ -51,10 +51,30 @@ import name.gornostal.loopback.MainViewModel
 import name.gornostal.loopback.api.LoopbackRequest
 import name.gornostal.loopback.api.RequestOption
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RequestScreen(viewModel: MainViewModel, requestId: String) {
-    val request = viewModel.openRequest?.takeIf { it.id == requestId }
+    RequestContent(
+        request = viewModel.openRequest?.takeIf { it.id == requestId },
+        loading = viewModel.openLoading,
+        submitting = viewModel.submitting,
+        onBack = viewModel::showInbox,
+        onSubmit = { id, selected, text -> viewModel.submitAnswer(id, selected, text) },
+    )
+}
+
+/**
+ * Stateless request detail UI; [RequestScreen] wires it to the ViewModel, previews feed it sample data.
+ * [onSubmit] returns an error message to show, or null on success.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RequestContent(
+    request: LoopbackRequest?,
+    loading: Boolean,
+    submitting: Boolean,
+    onBack: () -> Unit,
+    onSubmit: suspend (id: String, selected: List<String>, text: String?) -> String?,
+) {
     val snackbar = remember { SnackbarHostState() }
 
     Scaffold(
@@ -62,7 +82,7 @@ fun RequestScreen(viewModel: MainViewModel, requestId: String) {
             TopAppBar(
                 title = { Text(request?.source?.takeIf { it.isNotBlank() } ?: "Request") },
                 navigationIcon = {
-                    IconButton(onClick = viewModel::showInbox) {
+                    IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -73,13 +93,13 @@ fun RequestScreen(viewModel: MainViewModel, requestId: String) {
         when {
             request != null -> RequestBody(
                 request = request,
-                submitting = viewModel.submitting,
+                submitting = submitting,
                 onSubmit = { selected, text ->
-                    viewModel.submitAnswer(request.id, selected, text)?.let { snackbar.showSnackbar(it) }
+                    onSubmit(request.id, selected, text)?.let { snackbar.showSnackbar(it) }
                 },
                 modifier = Modifier.padding(padding),
             )
-            viewModel.openLoading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            loading -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
             else -> Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {

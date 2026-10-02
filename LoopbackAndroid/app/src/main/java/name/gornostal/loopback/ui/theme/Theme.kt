@@ -31,12 +31,20 @@ private val DarkColors = darkColorScheme(
     onSecondaryContainer = Color(0xFFD8E3F8),
 )
 
+/**
+ * [dynamicColor] follows the wallpaper on Android 12+; previews turn it off so they render the
+ * brand palette instead of whatever the preview host picks.
+ */
 @Composable
-fun LoopbackTheme(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+fun LoopbackTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    val dark = darkTheme
     val context = LocalContext.current
     val colorScheme = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S ->
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         dark -> DarkColors
         else -> LightColors

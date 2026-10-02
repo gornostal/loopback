@@ -44,29 +44,58 @@ import kotlinx.coroutines.launch
 import name.gornostal.loopback.MainViewModel
 import name.gornostal.loopback.push.DeviceRegistrar
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val snackbar = remember { SnackbarHostState() }
-    var url by rememberSaveable { mutableStateOf(viewModel.settings.serverUrl) }
-    var key by rememberSaveable { mutableStateOf(viewModel.settings.apiKey) }
-    var busy by remember { mutableStateOf(false) }
     var pushToken by remember { mutableStateOf<String?>(null) }
     val firebaseAvailable = remember { DeviceRegistrar.isFirebaseAvailable(context) }
-    val configured = viewModel.settings.isConfigured
 
     LaunchedEffect(Unit) {
         pushToken = runCatching { DeviceRegistrar.currentToken(context) }.getOrNull()
     }
+
+    SettingsContent(
+        initialUrl = viewModel.settings.serverUrl,
+        initialKey = viewModel.settings.apiKey,
+        configured = viewModel.settings.isConfigured,
+        firebaseAvailable = firebaseAvailable,
+        pushToken = pushToken,
+        deviceName = DeviceRegistrar.deviceName(),
+        onBack = viewModel::showInbox,
+        onSave = viewModel::saveSettings,
+        onRegisterDevice = viewModel::registerDevice,
+    )
+}
+
+/**
+ * Stateless settings UI; [SettingsScreen] wires it to the ViewModel and Firebase, previews feed it sample data.
+ * [onSave] and [onRegisterDevice] return an error message to show, or null on success.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsContent(
+    initialUrl: String,
+    initialKey: String,
+    configured: Boolean,
+    firebaseAvailable: Boolean,
+    pushToken: String?,
+    deviceName: String,
+    onBack: () -> Unit,
+    onSave: suspend (url: String, key: String) -> String?,
+    onRegisterDevice: suspend () -> String?,
+) {
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    var url by rememberSaveable { mutableStateOf(initialUrl) }
+    var key by rememberSaveable { mutableStateOf(initialKey) }
+    var busy by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (configured) "Settings" else "Connect to your server") },
                 navigationIcon = {
-                    if (configured) IconButton(onClick = viewModel::showInbox) {
+                    if (configured) IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -111,11 +140,11 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 onClick = {
                     scope.launch {
                         busy = true
-                        val error = viewModel.saveSettings(url, key)
+                        val error = onSave(url, key)
                         busy = false
                         if (error == null) {
                             snackbar.showSnackbar("Connected")
-                            viewModel.showInbox()
+                            onBack()
                         } else {
                             snackbar.showSnackbar(error)
                         }
@@ -140,7 +169,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 else -> Text(
-                    "This device: ${DeviceRegistrar.deviceName()}\nToken: ${pushToken!!.take(16)}…",
+                    "This device: $deviceName\nToken: ${pushToken.take(16)}…",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -148,7 +177,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
             OutlinedButton(
                 onClick = {
                     scope.launch {
-                        val error = viewModel.registerDevice()
+                        val error = onRegisterDevice()
                         snackbar.showSnackbar(error ?: "Device registered with server")
                     }
                 },
