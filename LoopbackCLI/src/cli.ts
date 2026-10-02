@@ -2,9 +2,9 @@
 /**
  * Loopback CLI.
  *
- *   loopback install [--claude] [--codex] [--project] [--url <u> --key <k>]   install the skill
+ *   loopback install [--claude] [--codex] [--project] [--url <u> --key <agent-key>]   install the skill
  *   loopback uninstall [--claude] [--codex] [--project]
- *   loopback config --url <u> --key <k>                                      write ~/.config/loopback/config.json
+ *   loopback config --url <u> --key <agent-key>                                      write ~/.config/loopback/config.json
  *   loopback ask|wait|status …                                               same as the skill script
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
@@ -54,7 +54,7 @@ function uninstallSkill(target: Target) {
 
 function writeConfig(url: string, key: string) {
   mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-  writeFileSync(CONFIG_PATH, JSON.stringify({ url: url.replace(/\/+$/, ""), apiKey: key }, null, 2) + "\n", {
+  writeFileSync(CONFIG_PATH, JSON.stringify({ url: url.replace(/\/+$/, ""), agentKey: key }, null, 2) + "\n", {
     mode: 0o600,
   });
   chmodSync(CONFIG_PATH, 0o600);
@@ -62,10 +62,10 @@ function writeConfig(url: string, key: string) {
 }
 
 function hasConfig(): boolean {
-  if (process.env.LOOPBACK_URL && process.env.LOOPBACK_API_KEY) return true;
+  if (process.env.LOOPBACK_URL && process.env.LOOPBACK_AGENT_KEY) return true;
   try {
     const c = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
-    return Boolean(c.url && c.apiKey);
+    return Boolean(c.url && c.agentKey);
   } catch {
     return false;
   }
@@ -73,14 +73,14 @@ function hasConfig(): boolean {
 
 const USAGE = `Loopback CLI
 
-  loopback install [--claude] [--codex] [--project] [--url <url> --key <api-key>]
+  loopback install [--claude] [--codex] [--project] [--url <url> --key <agent-key>]
       Install the "loopback" skill (SKILL.md + scripts/loopback.mjs).
       Default: both agents, user-level (~/.claude/skills, ~/.codex/skills).
       --project installs into ./.claude/skills and ./.codex/skills instead.
       --url/--key also write ~/.config/loopback/config.json.
 
   loopback uninstall [--claude] [--codex] [--project]
-  loopback config --url <url> --key <api-key>
+  loopback config --url <url> --key <agent-key>
 
   loopback ask "<title>" [--context ..] [--option "Label :: desc"]... [--multi] [--no-text]
                          [--source ..] [--timeout <s>] [--no-wait]
@@ -126,7 +126,7 @@ async function run(argv: string[]): Promise<number> {
     list.forEach(installSkill);
     if (!hasConfig()) {
       console.log(
-        `\n! No server config found. Run: loopback config --url https://your-server --key <api-key>\n  (or export LOOPBACK_URL and LOOPBACK_API_KEY).`,
+        `\n! No server config found. Run: loopback config --url https://your-server --key <agent-key>\n  (or export LOOPBACK_URL and LOOPBACK_AGENT_KEY).`,
       );
     }
     console.log(`\nAgents will pick the skill up on their next session. Try: loopback ask "Ping?" --option Pong`);

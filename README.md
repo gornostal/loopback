@@ -5,7 +5,7 @@
 Human-in-the-loop for AI agents. An agent asks a question, your phone buzzes, you tap an option (or type your own answer), the agent carries on.
 
 ```
-agent ──POST /api/requests──▶ Loopback server ──FCM push──▶ Android app
+agent ──POST /api/agent/requests──▶ Loopback server ──FCM push──▶ Android app
 agent ◀── long-poll answer ── Loopback server ◀── answer ──  you
 ```
 
@@ -23,7 +23,7 @@ The prompt the phone shows mirrors Claude Code's `AskUserQuestion`: a title, opt
 
 ```sh
 cd LoopbackServer
-cp .env.example .env          # set LOOPBACK_API_KEY (openssl rand -hex 32)
+cp .env.example .env          # set LOOPBACK_APP_KEY and LOOPBACK_AGENT_KEY (openssl rand -hex 32 each)
 bun install                   # dev deps only (types)
 bun run dev                   # http://localhost:8787
 ```
@@ -39,17 +39,35 @@ Without a service account the server still works; it just logs that it can't pus
 
 ### API
 
-All `/api` routes require `Authorization: Bearer <LOOPBACK_API_KEY>`.
+The API has two halves, each with its own key:
+
+| Who | Prefix | Key | Can |
+|---|---|---|---|
+| **Agents** (skill, CLI, curl) | `/api/agent` | `LOOPBACK_AGENT_KEY` | Create requests, then fetch, wait on or cancel them **by id**. Can't list, answer or see devices. |
+| **Android app** | `/api/app` | `LOOPBACK_APP_KEY` | List and read every request, answer, register for push. |
+
+Request ids are 128 random bits encoded in base58 (about 22 chars, e.g. `7Xq9KfJ2mVb4nRtYp8LwHc`). An agent can't list requests and the ids can't be guessed, so in practice an agent only reaches the requests it created itself. Send the key as `Authorization: Bearer <key>`. Using one half's key on the other half returns `401`.
+
+#### Agent API
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/requests[?wait=N]` | Create a request. With `wait`, block up to N s (max 600) and return the answered request. |
-| `GET` | `/api/requests?status=pending` | List. `status` = `pending` \| `answered` \| `cancelled` \| `all`. |
-| `GET` | `/api/requests/:id` | Fetch one. |
-| `GET` | `/api/requests/:id/wait?timeout=N` | Long-poll until answered or cancelled (returns current state on timeout). |
-| `POST` | `/api/requests/:id/answer` | `{ "selected": ["Deploy"], "text": "but watch the logs" }` |
-| `DELETE` | `/api/requests/:id` | Cancel; dismisses the phone notification. |
-| `POST` | `/api/devices` | `{ "token", "platform", "name" }` — the app calls this itself. |
+| `POST` | `/api/agent/requests[?wait=N]` | Create a request. Returns `201` with the request, including its `id`. With `wait`, blocks up to N s (max 600) and returns the request as it stands then: answered, cancelled or still pending. |
+| `GET` | `/api/agent/requests/:id` | Current state, instantly. |
+| `GET` | `/api/agent/requests/:id/wait?timeout=N` | Long-poll until answered or cancelled (default 60 s, max 600). Returns the current state on timeout. |
+| `DELETE` | `/api/agent/requests/:id` | Cancel a pending request. Dismisses the phone notification. `409` if it's already answered. |
+
+#### App API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/app/requests?status=pending&limit=100` | List. `status` = `pending` \| `answered` \| `cancelled` \| `all`, `limit` ≤ 500. Returns `{ "requests": [...] }`. |
+| `GET` | `/api/app/requests/:id` | Fetch one. |
+| `POST` | `/api/app/requests/:id/answer` | `{ "selected": ["Deploy"], "text": "but watch the logs" }`. Wakes any agent waiting on it. `409` if no longer pending. |
+| `POST` | `/api/app/devices` | `{ "token", "platform", "name" }`: register an FCM token. The app does this on its own. |
+| `GET` | `/api/app/devices` | List registered devices (tokens truncated). |
+
+`GET /health` needs no key.
 
 Create body:
 
@@ -84,7 +102,7 @@ The easiest path is the skill. Install it once:
 
 ```sh
 cd LoopbackCLI && bun install && bun link      # puts `loopback` on your PATH
-loopback install --url https://loopback.example.com --key <LOOPBACK_API_KEY>
+loopback install --url https://loopback.example.com --key <LOOPBACK_AGENT_KEY>
 ```
 
 This writes `~/.config/loopback/config.json` and installs `SKILL.md` + `scripts/loopback.mjs` into
@@ -115,8 +133,8 @@ The same commands work from your shell: `loopback ask "Ping?" --option Pong`.
 Without the CLI, plain curl works too (blocks up to 5 min):
 
 ```sh
-curl -s -X POST "http://localhost:8787/api/requests?wait=300" \
-  -H "Authorization: Bearer $LOOPBACK_API_KEY" -H "Content-Type: application/json" \
+curl -s -X POST "http://localhost:8787/api/agent/requests?wait=300" \
+  -H "Authorization: Bearer $LOOPBACK_AGENT_KEY" -H "Content-Type: application/json" \
   -d '{"title":"Merge PR #42?","options":["Merge","Request changes"],"source":"claude-code"}' \
   | jq .answer
 ```
@@ -130,14 +148,14 @@ cd LoopbackAndroid
 
 Requires JDK 17+, Android SDK 36. The Firebase plugin is applied only if `app/google-services.json` exists, so the app builds without it (push disabled; Settings explains how to enable it).
 
-First launch opens Settings: enter the server URL and API key, tap **Save & test connection**. The app registers its FCM token with the server automatically. For a server on your LAN use plain `http://192.168.x.x:8787` (cleartext is allowed); for an emulator, `adb reverse tcp:8787 tcp:8787` and use `http://localhost:8787`.
+First launch opens Settings: enter the server URL and the **app** key (`LOOPBACK_APP_KEY`), tap **Save & test connection**. The app registers its FCM token with the server automatically. For a server on your LAN use plain `http://192.168.x.x:8787` (cleartext is allowed); for an emulator, `adb reverse tcp:8787 tcp:8787` and use `http://localhost:8787`.
 
 Screens:
 
 - **Inbox** — Pending / History tabs, pull to refresh, refreshes itself when a push arrives.
 - **Request** — source, time, title, markdown context, options (radio or checkbox), "My answer" field, **Send answer**. Already-answered or cancelled requests open read-only.
-- **Settings** — server URL, API key, push status, re-register device.
+- **Settings** — server URL, app key, push status, re-register device.
 
 ## Status
 
-v0.1: single user, one shared API key, Android only. Not yet: iOS, request expiry, answer edits, multiple users, web inbox.
+v0.1: single user, one app key + one shared agent key, Android only. Not yet: iOS, request expiry, answer edits, multiple users, web inbox.

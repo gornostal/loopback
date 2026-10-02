@@ -16,25 +16,25 @@ import okhttp3.Response
 
 class ApiException(val code: Int, message: String) : IOException(message)
 
-/** Thin client for the Loopback server's REST API. */
+/** Thin client for the Loopback server's app API (under `/api/app`, authenticated with the app key). */
 class LoopbackApi(private val baseUrl: String, private val apiKey: String) {
 
     suspend fun listRequests(status: String): List<LoopbackRequest> =
-        get("/api/requests?status=$status&limit=200").let { json.decodeFromString<RequestList>(it).requests }
+        get("/api/app/requests?status=$status&limit=200").let { json.decodeFromString<RequestList>(it).requests }
 
     suspend fun getRequest(id: String): LoopbackRequest =
-        json.decodeFromString(get("/api/requests/$id"))
+        json.decodeFromString(get("/api/app/requests/$id"))
 
     suspend fun answer(id: String, selected: List<String>, text: String?): LoopbackRequest =
-        json.decodeFromString(post("/api/requests/$id/answer", json.encodeToString(AnswerBody(selected, text))))
+        json.decodeFromString(post("/api/app/requests/$id/answer", json.encodeToString(AnswerBody(selected, text))))
 
     suspend fun registerDevice(token: String, name: String) {
-        post("/api/devices", json.encodeToString(RegisterDeviceBody(token = token, name = name)))
+        post("/api/app/devices", json.encodeToString(RegisterDeviceBody(token = token, name = name)))
     }
 
     /** Cheap authenticated call used by "Test connection". */
     suspend fun ping() {
-        get("/api/requests?status=pending&limit=1")
+        get("/api/app/requests?status=pending&limit=1")
     }
 
     private suspend fun get(path: String): String = execute(Request.Builder().url(baseUrl + path).get())

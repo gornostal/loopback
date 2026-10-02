@@ -55,7 +55,7 @@ export class Store {
 
   createRequest(body: CreateRequestBody): LoopbackRequest {
     const req: LoopbackRequest = {
-      id: crypto.randomUUID(),
+      id: newId(),
       createdAt: new Date().toISOString(),
       status: "pending",
       title: body.title,
@@ -154,4 +154,21 @@ function toRequest(row: RequestRow): LoopbackRequest {
     source: row.source,
     answer: row.answer ? JSON.parse(row.answer) : null,
   };
+}
+
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/**
+ * 128 random bits, base58-encoded (~22 chars). Agents can't list requests, so knowing an id is what
+ * lets an agent read its own request; it must be unguessable.
+ */
+function newId(): string {
+  let n = 0n;
+  for (const byte of crypto.getRandomValues(new Uint8Array(16))) n = (n << 8n) | BigInt(byte);
+  let out = "";
+  while (n > 0n) {
+    out = BASE58[Number(n % 58n)] + out;
+    n /= 58n;
+  }
+  return out;
 }

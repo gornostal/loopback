@@ -4,16 +4,22 @@ import { Fcm } from "./fcm.ts";
 import type { CreateRequestBody, LoopbackRequest, RequestStatus } from "./types.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
-const API_KEY = process.env.LOOPBACK_API_KEY;
+const APP_KEY = process.env.LOOPBACK_APP_KEY ?? process.env.LOOPBACK_API_KEY;
+const AGENT_KEY = process.env.LOOPBACK_AGENT_KEY;
 const DATA_DIR = process.env.DATA_DIR ?? "./data";
 const SERVICE_ACCOUNT = process.env.FIREBASE_SERVICE_ACCOUNT;
 const SERVICE_ACCOUNT_B64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
 const MAX_WAIT_SECONDS = 600;
 
-if (!API_KEY) {
-  console.error("LOOPBACK_API_KEY is not set. Copy .env.example to .env and set a secret.");
+if (!APP_KEY || !AGENT_KEY) {
+  console.error("LOOPBACK_APP_KEY and LOOPBACK_AGENT_KEY must be set. Copy .env.example to .env and set two secrets.");
   process.exit(1);
 }
+if (APP_KEY === AGENT_KEY) {
+  console.error("LOOPBACK_APP_KEY and LOOPBACK_AGENT_KEY must differ, or agents could read the whole inbox.");
+  process.exit(1);
+}
+if (!process.env.LOOPBACK_APP_KEY) console.warn("LOOPBACK_API_KEY is deprecated; rename it to LOOPBACK_APP_KEY.");
 
 const store = new Store(DATA_DIR);
 const fcm = await loadFcm();
@@ -117,10 +123,10 @@ function json(body: unknown, status = 200): Response {
   return Response.json(body, { status });
 }
 
-function requireAuth(req: Request) {
+function requireKey(req: Request, key: string) {
   const header = req.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : null;
-  if (token !== API_KEY) throw new HttpError(401, "Unauthorized");
+  if (token !== key) throw new HttpError(401, "Unauthorized");
 }
 
 async function readJson<T>(req: Request): Promise<T> {
@@ -139,11 +145,11 @@ function clampWait(value: string | null): number {
 
 type Handler<P extends string> = (req: BunRequest<P>) => Response | Promise<Response>;
 
-/** Wraps a handler with auth + error → JSON conversion. */
-function api<P extends string>(handler: Handler<P>): Handler<P> {
+/** Wraps a handler with auth against `key` + error → JSON conversion. */
+function withKey<P extends string>(key: string, handler: Handler<P>): Handler<P> {
   return async (req) => {
     try {
-      requireAuth(req);
+      requireKey(req, key);
       return await handler(req);
     } catch (err) {
       if (err instanceof HttpError) return json({ error: err.message }, err.status);
@@ -152,6 +158,11 @@ function api<P extends string>(handler: Handler<P>): Handler<P> {
     }
   };
 }
+
+/** `/api/agent/*`: create requests and follow the ones you know the id of. */
+const agent = <P extends string>(handler: Handler<P>) => withKey(AGENT_KEY, handler);
+/** `/api/app/*`: the phone. Lists, answers, registers devices. */
+const app = <P extends string>(handler: Handler<P>) => withKey(APP_KEY, handler);
 
 function validateCreate(body: unknown): CreateRequestBody {
   if (!body || typeof body !== "object") throw new HttpError(400, "Body must be an object");
@@ -202,31 +213,27 @@ const server = Bun.serve({
         [
           "Loopback server",
           "",
-          "POST   /api/requests[?wait=N]      create a request (optionally wait N s for the answer)",
-          "GET    /api/requests?status=pending list requests (pending|answered|cancelled|all)",
-          "GET    /api/requests/:id           fetch one",
-          "GET    /api/requests/:id/wait?timeout=N  long-poll until answered/cancelled",
-          "POST   /api/requests/:id/answer    { selected: string[], text?: string }",
-          "DELETE /api/requests/:id           cancel",
-          "POST   /api/devices                { token, platform, name? } register push token",
+          "Agent API — Authorization: Bearer <LOOPBACK_AGENT_KEY>",
+          "  POST   /api/agent/requests[?wait=N]          create a request (optionally wait N s for the answer)",
+          "  GET    /api/agent/requests/:id               fetch one",
+          "  GET    /api/agent/requests/:id/wait?timeout=N  long-poll until answered/cancelled",
+          "  DELETE /api/agent/requests/:id               cancel",
           "",
-          "All /api routes need `Authorization: Bearer <LOOPBACK_API_KEY>`.",
+          "App API — Authorization: Bearer <LOOPBACK_APP_KEY>",
+          "  GET    /api/app/requests?status=pending      list (pending|answered|cancelled|all)",
+          "  GET    /api/app/requests/:id                 fetch one",
+          "  POST   /api/app/requests/:id/answer          { selected: string[], text?: string }",
+          "  GET    /api/app/devices                      list registered devices",
+          "  POST   /api/app/devices                      { token, platform, name? } register push token",
         ].join("\n"),
         { headers: { "Content-Type": "text/plain" } },
       ),
     "/health": () => json({ ok: true, fcm: Boolean(fcm) }),
 
-    "/api/requests": {
-      GET: api((req) => {
-        const url = new URL(req.url);
-        const status = (url.searchParams.get("status") ?? "pending") as RequestStatus | "all";
-        if (!["pending", "answered", "cancelled", "all"].includes(status)) {
-          throw new HttpError(400, "status must be pending|answered|cancelled|all");
-        }
-        const limit = Math.min(Number(url.searchParams.get("limit") ?? 100) || 100, 500);
-        return json({ requests: store.listRequests(status, limit) });
-      }),
-      POST: api(async (req) => {
+    // --- Agent API --------------------------------------------------------
+
+    "/api/agent/requests": {
+      POST: agent(async (req) => {
         const body = validateCreate(await readJson(req));
         const created = store.createRequest(body);
         console.log(`New request ${created.id} from ${created.source ?? "unknown"}: ${created.title}`);
@@ -237,9 +244,9 @@ const server = Bun.serve({
       }),
     },
 
-    "/api/requests/:id": {
-      GET: api((req) => json(getOr404(req.params.id))),
-      DELETE: api((req) => {
+    "/api/agent/requests/:id": {
+      GET: agent((req) => json(getOr404(req.params.id))),
+      DELETE: agent((req) => {
         getOr404(req.params.id);
         const cancelled = store.cancelRequest(req.params.id);
         if (!cancelled) throw new HttpError(409, "Request is no longer pending");
@@ -249,16 +256,34 @@ const server = Bun.serve({
       }),
     },
 
-    "/api/requests/:id/wait": {
-      GET: api(async (req) => {
+    "/api/agent/requests/:id/wait": {
+      GET: agent(async (req) => {
         const current = getOr404(req.params.id);
         const timeout = clampWait(new URL(req.url).searchParams.get("timeout")) || 60;
         return json(await waitForResolution(current, timeout));
       }),
     },
 
-    "/api/requests/:id/answer": {
-      POST: api(async (req) => {
+    // --- App API ----------------------------------------------------------
+
+    "/api/app/requests": {
+      GET: app((req) => {
+        const url = new URL(req.url);
+        const status = (url.searchParams.get("status") ?? "pending") as RequestStatus | "all";
+        if (!["pending", "answered", "cancelled", "all"].includes(status)) {
+          throw new HttpError(400, "status must be pending|answered|cancelled|all");
+        }
+        const limit = Math.min(Number(url.searchParams.get("limit") ?? 100) || 100, 500);
+        return json({ requests: store.listRequests(status, limit) });
+      }),
+    },
+
+    "/api/app/requests/:id": {
+      GET: app((req) => json(getOr404(req.params.id))),
+    },
+
+    "/api/app/requests/:id/answer": {
+      POST: app(async (req) => {
         getOr404(req.params.id);
         const body = await readJson<{ selected?: unknown; text?: unknown }>(req);
         const selected = Array.isArray(body.selected) ? body.selected.filter((s) => typeof s === "string") : [];
@@ -272,13 +297,13 @@ const server = Bun.serve({
       }),
     },
 
-    "/api/devices": {
-      GET: api(() =>
+    "/api/app/devices": {
+      GET: app(() =>
         json({
           devices: store.listDevices().map((d) => ({ ...d, token: `${d.token.slice(0, 12)}…` })),
         }),
       ),
-      POST: api(async (req) => {
+      POST: app(async (req) => {
         const body = await readJson<{ token?: unknown; platform?: unknown; name?: unknown }>(req);
         if (typeof body.token !== "string" || !body.token) throw new HttpError(400, "`token` is required");
         const platform = typeof body.platform === "string" ? body.platform : "android";

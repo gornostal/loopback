@@ -10,7 +10,7 @@ a list of options you propose (like a Claude Code `AskUserQuestion` prompt), and
 "my answer" free-text field. Their reply comes back to you as JSON.
 
 Script: `node {{SKILL_DIR}}/scripts/loopback.mjs` (plain Node, no dependencies).
-Config comes from `LOOPBACK_URL` / `LOOPBACK_API_KEY` or `~/.config/loopback/config.json`.
+Config comes from `LOOPBACK_URL` / `LOOPBACK_AGENT_KEY` or `~/.config/loopback/config.json`.
 
 ## When to use
 

@@ -7,7 +7,8 @@
 //   loopback.mjs wait <id> [--timeout <seconds>]
 //   loopback.mjs status <id>
 //
-// Config: LOOPBACK_URL + LOOPBACK_API_KEY env vars, else ~/.config/loopback/config.json {"url","apiKey"}.
+// Config: LOOPBACK_URL + LOOPBACK_AGENT_KEY env vars, else ~/.config/loopback/config.json {"url","agentKey"}.
+// Uses the server's agent API: it can create requests and follow them by id, not list or answer them.
 // Exit codes: 0 answered (or created with --no-wait) · 2 cancelled · 3 still pending after timeout · 1 error.
 
 import { readFileSync } from "node:fs";
@@ -28,19 +29,19 @@ export function loadConfig() {
     // no config file; env vars may still be set
   }
   const url = (process.env.LOOPBACK_URL || fileConfig.url || "").replace(/\/+$/, "");
-  const apiKey = process.env.LOOPBACK_API_KEY || fileConfig.apiKey || "";
-  if (!url || !apiKey) {
+  const agentKey = process.env.LOOPBACK_AGENT_KEY || fileConfig.agentKey || "";
+  if (!url || !agentKey) {
     throw new Error(
-      `Loopback is not configured. Set LOOPBACK_URL and LOOPBACK_API_KEY, or create ${CONFIG_PATH} with {"url": "...", "apiKey": "..."}.`,
+      `Loopback is not configured. Set LOOPBACK_URL and LOOPBACK_AGENT_KEY, or create ${CONFIG_PATH} with {"url": "...", "agentKey": "..."}.`,
     );
   }
-  return { url, apiKey };
+  return { url, agentKey };
 }
 
 async function call(config, method, path, body) {
   const res = await fetch(config.url + path, {
     method,
-    headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${config.agentKey}`, "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -58,11 +59,11 @@ async function call(config, method, path, body) {
 
 /** Creates a request; returns the server's request object (status "pending"). */
 export function createRequest(config, { title, context, options = [], multiSelect = false, allowFreeText = true, source }) {
-  return call(config, "POST", "/api/requests", { title, context, options, multiSelect, allowFreeText, source });
+  return call(config, "POST", "/api/agent/requests", { title, context, options, multiSelect, allowFreeText, source });
 }
 
 export function getRequest(config, id) {
-  return call(config, "GET", `/api/requests/${encodeURIComponent(id)}`);
+  return call(config, "GET", `/api/agent/requests/${encodeURIComponent(id)}`);
 }
 
 /**
@@ -76,7 +77,7 @@ export async function waitForAnswer(config, id, timeoutSeconds) {
     const remaining = Math.ceil((deadline - Date.now()) / 1000);
     if (remaining <= 0) break;
     const chunk = Math.min(POLL_CHUNK_SECONDS, remaining);
-    request = await call(config, "GET", `/api/requests/${encodeURIComponent(id)}/wait?timeout=${chunk}`);
+    request = await call(config, "GET", `/api/agent/requests/${encodeURIComponent(id)}/wait?timeout=${chunk}`);
   }
   return request;
 }

@@ -15,7 +15,7 @@ export interface Answer {
   answeredAt: string;
 }
 
-/** Body accepted by `POST /api/requests`. */
+/** Body accepted by `POST /api/agent/requests`. */
 export interface CreateRequestBody {
   /** Short question or headline. Shown as the push title. */
   title: string;

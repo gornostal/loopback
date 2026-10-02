@@ -100,7 +100,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
             OutlinedTextField(
                 value = key,
                 onValueChange = { key = it },
-                label = { Text("API key") },
+                label = { Text("App key") },
+                supportingText = { Text("LOOPBACK_APP_KEY from the server, not the agent key") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
