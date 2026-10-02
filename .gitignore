@@ -1,2 +1,4 @@
 .playwright-cli/
 .claude
+__pycache__/
+*.pyc
