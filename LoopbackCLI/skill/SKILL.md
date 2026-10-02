@@ -32,7 +32,7 @@ python3 {{SKILL_DIR}}/loopback.py ask "Deploy api v2.3 to production?" \
   --option "Deploy now :: run the migration and roll out" \
   --option "Deploy tonight :: 02:00 UTC window" \
   --option "Hold :: I'll follow up" \
-  --source "claude-code" \
+  --source "my-project" \
   --timeout 300
 ```
 
@@ -42,7 +42,8 @@ python3 {{SKILL_DIR}}/loopback.py ask "Deploy api v2.3 to production?" \
 - `--no-text` — hide the free-text field (default is to show it so they can answer in their own words).
 - `--context` — markdown. Give the facts they need to decide in a few lines; headers, lists, code and
   quotes render.
-- `--source` — who is asking; shown in the inbox and notification. Keep it short.
+- `--source` — who is asking; shown in the inbox and notification. Use the project name (e.g. the repo
+  or directory you are working in) so the user can tell requests from different projects apart.
 - `--timeout <seconds>` — how long to block (default 300). Pass a matching timeout to your shell tool.
 
 Output on stdout:

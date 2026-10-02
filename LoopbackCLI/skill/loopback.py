@@ -27,7 +27,7 @@ EPILOG = """\
 examples:
   loopback.py ask "Deploy api v2.3?" --context "CI green. 1 migration." \\
       --option "Deploy now :: run the migration and roll out" --option "Hold" \\
-      --source claude-code --timeout 300
+      --source my-project --timeout 300
   loopback.py ask "Merge PR #42?" --option Merge --option "Request changes" --no-wait
   loopback.py wait <id> --timeout 300
   loopback.py status <id>
@@ -181,7 +181,7 @@ def build_parser():
                      help="a choice; repeat for each. Description is optional")
     ask.add_argument("--multi", action="store_true", help="let the user pick several options")
     ask.add_argument("--no-text", action="store_true", help='hide the free-text "my answer" field')
-    ask.add_argument("--source", default="agent", help="who is asking; shown in the inbox (default: agent)")
+    ask.add_argument("--source", default="agent", help="who is asking, ideally the project name; shown in the inbox (default: agent)")
     ask.add_argument("--timeout", type=int, default=300, metavar="SECONDS", help="how long to block (default: 300)")
     ask.add_argument("--no-wait", action="store_true", help="print the new request's id and return immediately")
     ask.set_defaults(func=cmd_ask)
