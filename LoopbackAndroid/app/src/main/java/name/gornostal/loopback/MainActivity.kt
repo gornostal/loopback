@@ -3,24 +3,22 @@ package name.gornostal.loopback
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
 import androidx.core.content.ContextCompat
 import name.gornostal.loopback.push.Notifications
-import name.gornostal.loopback.ui.InboxScreen
+import name.gornostal.loopback.ui.HomeScreen
 import name.gornostal.loopback.ui.RequestScreen
-import name.gornostal.loopback.ui.SettingsScreen
+import name.gornostal.loopback.ui.theme.LoopbackSurface
 import name.gornostal.loopback.ui.theme.LoopbackTheme
 
 class MainActivity : ComponentActivity() {
@@ -31,21 +29,27 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Dark-only UI: force light system bar icons regardless of the system theme.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         handleIntent(intent)
         setContent {
             LoopbackTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                LoopbackSurface {
                     LaunchedEffect(Unit) { askNotificationPermission() }
                     when (val screen = viewModel.screen) {
-                        Screen.Inbox -> InboxScreen(viewModel)
-                        is Screen.Request -> {
-                            BackHandler { viewModel.showInbox() }
-                            RequestScreen(viewModel, screen.id)
+                        Screen.Home -> {
+                            // Back from a secondary tab returns to Pending; from Pending it exits.
+                            BackHandler(enabled = viewModel.tab != HomeTab.Pending && viewModel.settings.isConfigured) {
+                                viewModel.selectTab(HomeTab.Pending)
+                            }
+                            HomeScreen(viewModel)
                         }
-                        Screen.Settings -> {
-                            BackHandler(enabled = viewModel.settings.isConfigured) { viewModel.showInbox() }
-                            SettingsScreen(viewModel)
+                        is Screen.Request -> {
+                            BackHandler { viewModel.showHome() }
+                            RequestScreen(viewModel, screen.id)
                         }
                     }
                 }

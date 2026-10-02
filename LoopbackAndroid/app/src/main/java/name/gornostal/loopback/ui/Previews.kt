@@ -1,21 +1,22 @@
 package name.gornostal.loopback.ui
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import name.gornostal.loopback.HomeTab
 import name.gornostal.loopback.api.Answer
 import name.gornostal.loopback.api.LoopbackRequest
 import name.gornostal.loopback.api.RequestOption
+import name.gornostal.loopback.ui.theme.LoopbackSurface
 import name.gornostal.loopback.ui.theme.LoopbackTheme
 import java.time.Duration
 import java.time.Instant
 
 // Android Studio design-time previews. Open any file in this package and switch to the
 // Split/Design view to render them without building or installing the app.
+// The app is dark-only, so every preview renders the single brand theme.
 
 private fun ago(duration: Duration): String = Instant.now().minus(duration).toString()
 
@@ -108,83 +109,85 @@ private val sampleHistory = listOf(answered, cancelled)
 
 @Composable
 private fun PreviewTheme(content: @Composable () -> Unit) {
-    LoopbackTheme(dynamicColor = false) {
-        Surface(content = content)
+    LoopbackTheme { LoopbackSurface(content) }
+}
+
+/** Renders a tab's content inside the home shell with the bottom navigation bar. */
+@Composable
+private fun PreviewHome(tab: HomeTab, pendingCount: Int = samplePending.size, content: @Composable (Modifier) -> Unit) =
+    PreviewTheme {
+        HomeShell(tab = tab, pendingCount = pendingCount, onSelectTab = {}) { padding ->
+            content(Modifier.padding(padding))
+        }
     }
-}
 
-// ---- Inbox ------------------------------------------------------------------------------------
-
-@PreviewLightDark
 @Composable
-private fun InboxPendingPreview() = PreviewTheme {
-    InboxContent(
-        pending = samplePending,
-        history = sampleHistory,
-        loading = false,
-        error = null,
-        onClearError = {},
-        onRefresh = {},
-        onOpenSettings = {},
-        onOpenRequest = {},
-    )
+private fun PreviewInbox(
+    requests: List<LoopbackRequest>,
+    history: Boolean,
+    modifier: Modifier,
+    configured: Boolean = true,
+    loading: Boolean = false,
+) = InboxContent(
+    requests = requests,
+    history = history,
+    configured = configured,
+    loading = loading,
+    error = null,
+    onClearError = {},
+    onRefresh = {},
+    onOpenSettings = {},
+    onOpenRequest = {},
+    modifier = modifier,
+)
+
+// ---- Home / Inbox -----------------------------------------------------------------------------
+
+@Preview
+@Composable
+private fun InboxPendingPreview() = PreviewHome(HomeTab.Pending) { modifier ->
+    PreviewInbox(samplePending, history = false, modifier = modifier)
 }
 
 @Preview
 @Composable
-private fun InboxHistoryPreview() = PreviewTheme {
-    InboxContent(
-        pending = samplePending,
-        history = sampleHistory,
-        loading = false,
-        error = null,
-        onClearError = {},
-        onRefresh = {},
-        onOpenSettings = {},
-        onOpenRequest = {},
-        initialTab = 1,
-    )
+private fun InboxHistoryPreview() = PreviewHome(HomeTab.History) { modifier ->
+    PreviewInbox(sampleHistory, history = true, modifier = modifier)
 }
 
 @Preview
 @Composable
-private fun InboxEmptyPreview() = PreviewTheme {
-    InboxContent(
-        pending = emptyList(),
-        history = emptyList(),
-        loading = false,
-        error = null,
-        onClearError = {},
-        onRefresh = {},
-        onOpenSettings = {},
-        onOpenRequest = {},
-    )
+private fun InboxEmptyPreview() = PreviewHome(HomeTab.Pending, pendingCount = 0) { modifier ->
+    PreviewInbox(emptyList(), history = false, modifier = modifier)
 }
 
 @Preview
 @Composable
-private fun InboxRefreshingPreview() = PreviewTheme {
-    InboxContent(
-        pending = samplePending,
-        history = emptyList(),
-        loading = true,
-        error = null,
-        onClearError = {},
-        onRefresh = {},
-        onOpenSettings = {},
-        onOpenRequest = {},
-    )
+private fun InboxNotConfiguredPreview() = PreviewHome(HomeTab.Pending, pendingCount = 0) { modifier ->
+    PreviewInbox(emptyList(), history = false, modifier = modifier, configured = false)
 }
 
-@PreviewLightDark
+@Preview
+@Composable
+private fun InboxRefreshingPreview() = PreviewHome(HomeTab.Pending) { modifier ->
+    PreviewInbox(samplePending, history = false, modifier = modifier, loading = true)
+}
+
+@Preview
 @Composable
 private fun RequestCardPreview() = PreviewTheme {
     RequestCard(answered, onClick = {})
 }
 
+@Preview
+@Composable
+private fun RequestCardPendingPreview() = PreviewTheme {
+    RequestCard(pendingSingle, onClick = {})
+}
+
 // ---- Request ----------------------------------------------------------------------------------
 
-@PreviewLightDark
+@Preview
 @Composable
 private fun RequestSingleSelectPreview() = PreviewTheme {
     RequestContent(
@@ -232,7 +235,7 @@ private fun RequestSubmittingPreview() = PreviewTheme {
     )
 }
 
-@PreviewLightDark
+@Preview
 @Composable
 private fun RequestAnsweredPreview() = PreviewTheme {
     RequestContent(
@@ -282,9 +285,9 @@ private fun RequestNotFoundPreview() = PreviewTheme {
 
 // ---- Settings ---------------------------------------------------------------------------------
 
-@PreviewLightDark
+@Preview
 @Composable
-private fun SettingsConfiguredPreview() = PreviewTheme {
+private fun SettingsConfiguredPreview() = PreviewHome(HomeTab.Settings) { modifier ->
     SettingsContent(
         initialUrl = "https://loopback.example.com",
         initialKey = "app_live_8f3a2c",
@@ -292,15 +295,16 @@ private fun SettingsConfiguredPreview() = PreviewTheme {
         firebaseAvailable = true,
         pushToken = "dXkq8R2tQmS9vLpZ3nHbYw:APA91bF…",
         deviceName = "Google Pixel 8",
-        onBack = {},
+        onConnected = {},
         onSave = { _, _ -> null },
         onRegisterDevice = { null },
+        modifier = modifier,
     )
 }
 
 @Preview
 @Composable
-private fun SettingsFirstRunPreview() = PreviewTheme {
+private fun SettingsFirstRunPreview() = PreviewHome(HomeTab.Settings, pendingCount = 0) { modifier ->
     SettingsContent(
         initialUrl = "",
         initialKey = "",
@@ -308,15 +312,16 @@ private fun SettingsFirstRunPreview() = PreviewTheme {
         firebaseAvailable = true,
         pushToken = null,
         deviceName = "Google Pixel 8",
-        onBack = {},
+        onConnected = {},
         onSave = { _, _ -> null },
         onRegisterDevice = { null },
+        modifier = modifier,
     )
 }
 
 @Preview
 @Composable
-private fun SettingsNoFirebasePreview() = PreviewTheme {
+private fun SettingsNoFirebasePreview() = PreviewHome(HomeTab.Settings) { modifier ->
     SettingsContent(
         initialUrl = "https://loopback.example.com",
         initialKey = "app_live_8f3a2c",
@@ -324,15 +329,16 @@ private fun SettingsNoFirebasePreview() = PreviewTheme {
         firebaseAvailable = false,
         pushToken = null,
         deviceName = "Google Pixel 8",
-        onBack = {},
+        onConnected = {},
         onSave = { _, _ -> null },
         onRegisterDevice = { null },
+        modifier = modifier,
     )
 }
 
 // ---- Markdown ---------------------------------------------------------------------------------
 
-@PreviewLightDark
+@Preview
 @Composable
 private fun MarkdownPreview() = PreviewTheme {
     MarkdownText(

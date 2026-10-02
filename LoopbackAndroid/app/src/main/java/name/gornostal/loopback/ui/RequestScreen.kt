@@ -16,13 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +33,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,12 +43,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import name.gornostal.loopback.MainViewModel
 import name.gornostal.loopback.api.LoopbackRequest
 import name.gornostal.loopback.api.RequestOption
+import name.gornostal.loopback.ui.theme.Brand
 
 @Composable
 fun RequestScreen(viewModel: MainViewModel, requestId: String) {
@@ -57,7 +58,7 @@ fun RequestScreen(viewModel: MainViewModel, requestId: String) {
         request = viewModel.openRequest?.takeIf { it.id == requestId },
         loading = viewModel.openLoading,
         submitting = viewModel.submitting,
-        onBack = viewModel::showInbox,
+        onBack = viewModel::showHome,
         onSubmit = { id, selected, text -> viewModel.submitAnswer(id, selected, text) },
     )
 }
@@ -76,14 +77,27 @@ fun RequestContent(
     onSubmit: suspend (id: String, selected: List<String>, text: String?) -> String?,
 ) {
     val snackbar = remember { SnackbarHostState() }
+    val source = request?.source?.takeIf { it.isNotBlank() }
 
     Scaffold(
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
-                title = { Text(request?.source?.takeIf { it.isNotBlank() } ?: "Request") },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (request != null) SourceAvatar(source)
+                        Text(source ?: "Request", style = MaterialTheme.typography.titleMedium)
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    if (request != null && !request.isPending) {
+                        Box(Modifier.padding(end = 12.dp)) { StatusPill(request) }
                     }
                 },
             )
@@ -117,6 +131,7 @@ private fun RequestBody(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
+    val colors = MaterialTheme.colorScheme
     // Selection state keyed by request id so switching requests resets it.
     var selected by rememberSaveable(request.id) { mutableStateOf(setOf<String>()) }
     var text by rememberSaveable(request.id) { mutableStateOf("") }
@@ -129,24 +144,20 @@ private fun RequestBody(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .imePadding()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             relativeTime(request.createdAt),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = colors.onSurfaceVariant,
         )
-        Text(request.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+        Text(request.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
+        // Context runs the full width of the screen (only the column's side padding), not in a box,
+        // so long markdown gets as much room as possible.
         request.context?.takeIf { it.isNotBlank() }?.let { context ->
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                MarkdownText(context, modifier = Modifier.padding(16.dp))
-            }
+            MarkdownText(context, modifier = Modifier.fillMaxWidth())
         }
 
         if (readOnly) ResolvedBanner(request)
@@ -156,7 +167,7 @@ private fun RequestBody(
                 Text(
                     if (request.multiSelect) "Choose any that apply" else "Choose one",
                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = colors.onSurfaceVariant,
                 )
                 request.options.forEach { option ->
                     OptionRow(
@@ -188,20 +199,21 @@ private fun RequestBody(
                 readOnly = readOnly,
                 enabled = !submitting,
                 minLines = 3,
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
 
         if (!readOnly) {
-            Button(
+            AccentButton(
                 onClick = { scope.launch { onSubmit(selected.toList(), text.takeIf { it.isNotBlank() }) } },
                 enabled = canSubmit,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(54.dp),
             ) {
                 if (submitting) {
-                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = colors.primary)
                 } else {
-                    Text("Send answer", style = MaterialTheme.typography.titleMedium)
+                    Text("Send answer", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -221,12 +233,14 @@ private fun OptionRow(
     Card(
         onClick = onClick,
         enabled = enabled,
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = if (selected) colors.primaryContainer else colors.surfaceContainerHigh,
-            disabledContainerColor = if (selected) colors.primaryContainer else colors.surfaceContainerLow,
+            containerColor = if (selected) colors.primary.copy(alpha = 0.14f) else colors.surfaceContainerHigh.copy(alpha = 0.85f),
+            contentColor = colors.onSurface,
+            disabledContainerColor = if (selected) colors.primary.copy(alpha = 0.14f) else colors.surfaceContainerLow.copy(alpha = 0.85f),
             disabledContentColor = colors.onSurface,
         ),
-        border = if (selected) BorderStroke(1.5.dp, colors.primary) else null,
+        border = BorderStroke(1.dp, if (selected) Brand.Cyan else colors.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -247,20 +261,18 @@ private fun OptionRow(
 
 @Composable
 private fun ResolvedBanner(request: LoopbackRequest) {
+    val colors = MaterialTheme.colorScheme
     val (text, color) = when (request.status) {
-        "answered" -> "You answered ${request.answer?.answeredAt?.let { absoluteTime(it) }.orEmpty()}" to
-            MaterialTheme.colorScheme.primary
-        "cancelled" -> "The agent withdrew this request" to MaterialTheme.colorScheme.error
-        else -> "This request is ${request.status}" to MaterialTheme.colorScheme.onSurfaceVariant
+        "answered" -> "You answered ${request.answer?.answeredAt?.let { absoluteTime(it) }.orEmpty()}" to colors.tertiary
+        "cancelled" -> "The agent withdrew this request" to colors.error
+        else -> "This request is ${request.status}" to colors.onSurfaceVariant
     }
-    Column {
-        HorizontalDivider()
+    Surface(color = color.copy(alpha = 0.12f), contentColor = color, shape = MaterialTheme.shapes.medium) {
         Text(
             text,
             style = MaterialTheme.typography.labelLarge,
-            color = color,
-            modifier = Modifier.padding(vertical = 10.dp),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
         )
-        HorizontalDivider()
     }
 }

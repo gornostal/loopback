@@ -14,16 +14,21 @@ import name.gornostal.loopback.push.DeviceRegistrar
 import name.gornostal.loopback.push.Notifications
 import name.gornostal.loopback.push.PushEvents
 
+/** Tabs in the bottom navigation bar. */
+enum class HomeTab { Pending, History, Settings }
+
 sealed interface Screen {
-    data object Inbox : Screen
+    /** The tabbed home shell; which tab is showing lives in [MainViewModel.tab]. */
+    data object Home : Screen
     data class Request(val id: String) : Screen
-    data object Settings : Screen
 }
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     val settings = Settings(app)
 
-    var screen: Screen by mutableStateOf(if (settings.isConfigured) Screen.Inbox else Screen.Settings)
+    var screen: Screen by mutableStateOf(Screen.Home)
+        private set
+    var tab: HomeTab by mutableStateOf(if (settings.isConfigured) HomeTab.Pending else HomeTab.Settings)
         private set
 
     var pending: List<LoopbackRequest> by mutableStateOf(emptyList())
@@ -62,13 +67,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun api(): LoopbackApi? =
         if (settings.isConfigured) LoopbackApi(settings.serverUrl, settings.apiKey) else null
 
-    fun showInbox() {
-        screen = Screen.Inbox
+    /** Back to the home shell on whatever tab was last selected. */
+    fun showHome() {
+        screen = Screen.Home
         openRequest = null
     }
 
+    fun showInbox() {
+        tab = HomeTab.Pending
+        showHome()
+    }
+
     fun showSettings() {
-        screen = Screen.Settings
+        tab = HomeTab.Settings
+        showHome()
+    }
+
+    fun selectTab(selected: HomeTab) {
+        tab = selected
     }
 
     fun openRequest(id: String) {

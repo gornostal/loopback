@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#192BCB</color>
-    <color name="window_background">#FFFBFE</color>
+    <!-- Brand navy; matches Brand.Navy in ui/theme/Theme.kt. -->
+    <color name="window_background">#070E33</color>
 </resources>
