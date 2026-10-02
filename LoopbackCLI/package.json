@@ -1,0 +1,18 @@
+{
+  "name": "loopback-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Loopback CLI: ask a human from the terminal, and install the Loopback skill into Claude Code / Codex.",
+  "bin": {
+    "loopback": "./src/cli.ts"
+  },
+  "scripts": {
+    "typecheck": "bun x tsc --noEmit",
+    "build": "bun build --compile src/cli.ts --outfile dist/loopback"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}

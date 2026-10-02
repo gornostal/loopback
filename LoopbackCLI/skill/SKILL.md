@@ -1,0 +1,88 @@
+---
+name: loopback
+description: Ask the human a question, get a confirmation, or collect a free-text comment through a push notification to their phone (Loopback). Use when a decision is the user's to make and they may not be watching the terminal - approving deploys or destructive actions, choosing between approaches, clarifying ambiguous requirements, or sign-off before finishing. Blocks until they answer, or polls for the answer later while you keep working.
+---
+
+# Loopback: human-in-the-loop over push
+
+Loopback sends your question to the user's phone as a notification. They see your title, context,
+a list of options you propose (like a Claude Code `AskUserQuestion` prompt), and an optional
+"my answer" free-text field. Their reply comes back to you as JSON.
+
+Script: `node {{SKILL_DIR}}/scripts/loopback.mjs` (plain Node, no dependencies).
+Config comes from `LOOPBACK_URL` / `LOOPBACK_API_KEY` or `~/.config/loopback/config.json`.
+
+## When to use
+
+- You need approval before something hard to reverse (deploy, delete, pay, send, force-push).
+- Two or more reasonable approaches exist and the choice is the user's, not yours.
+- A requirement is ambiguous and guessing wrong would waste real work.
+- You finished and want sign-off or a comment before closing out.
+
+Don't use it for questions you can answer from the code, docs, or sensible defaults.
+If an interactive prompt tool (e.g. `AskUserQuestion`) is available **and** the user is actively
+at the terminal, prefer that; use Loopback when they have stepped away or asked to be reached by phone.
+
+## Ask and wait (default)
+
+```sh
+node {{SKILL_DIR}}/scripts/loopback.mjs ask "Deploy api v2.3 to production?" \
+  --context "CI is green on main. 1 migration, ~2 min downtime." \
+  --option "Deploy now :: run the migration and roll out" \
+  --option "Deploy tonight :: 02:00 UTC window" \
+  --option "Hold :: I'll follow up" \
+  --source "claude-code" \
+  --timeout 300
+```
+
+- `--option "Label :: description"` — repeat for each choice; description is optional. Order them by
+  how likely they are; put your recommendation first and say so in its description.
+- `--multi` — let the user pick several options.
+- `--no-text` — hide the free-text field (default is to show it so they can answer in their own words).
+- `--context` — markdown. Give the facts they need to decide in a few lines; headers, lists, code and
+  quotes render.
+- `--source` — who is asking; shown in the inbox and notification.
+- `--timeout <seconds>` — how long to block (default 300). Pass a matching timeout to your shell tool.
+
+Output on stdout:
+
+```json
+{ "id": "…", "status": "answered", "title": "…", "answer": { "selected": ["Deploy now"], "text": "watch error rates after" } }
+```
+
+`answer.selected` holds the labels they chose (may be empty if they only typed), `answer.text` holds
+their free-text comment or `null`. Treat text as overriding or refining the selection.
+
+Exit codes: **0** answered · **2** cancelled · **3** still pending when the timeout hit · **1** error.
+
+## Polling instead of blocking
+
+Humans can take minutes or hours. Two ways to avoid tying up your turn:
+
+1. **Timed out (exit 3)?** The request is still live. Re-run `wait` with the id printed in the JSON:
+
+   ```sh
+   node {{SKILL_DIR}}/scripts/loopback.mjs wait <id> --timeout 300
+   ```
+
+   Repeat until exit code is 0 or 2. Between polls, do work that doesn't depend on the answer.
+
+2. **Fire and continue.** Create the request without blocking, keep working, and check back:
+
+   ```sh
+   node {{SKILL_DIR}}/scripts/loopback.mjs ask "…" --option "…" --no-wait   # prints {id, status: "pending"}
+   node {{SKILL_DIR}}/scripts/loopback.mjs status <id>                      # instant, exit 3 if still pending
+   node {{SKILL_DIR}}/scripts/loopback.mjs wait <id> --timeout 120          # block up to 2 min
+   ```
+
+Never fabricate an answer when the status is `pending`; either keep polling, do independent work,
+or tell the user you're still waiting. A `cancelled` status means the request was withdrawn:
+stop waiting and don't act on it.
+
+## Writing a good question
+
+- Title: one short question, as the notification headline ("Merge PR #42?").
+- Context: what happened, what's at stake, what you recommend. Skip what they already know.
+- Options: 2–4, mutually exclusive unless `--multi`, each a concrete action. Avoid a bare "Yes/No"
+  when "Deploy now / Hold" says more.
+- One request per decision. Don't bundle unrelated questions.
