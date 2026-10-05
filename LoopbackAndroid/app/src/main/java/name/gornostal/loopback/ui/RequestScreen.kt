@@ -160,7 +160,8 @@ private fun RequestBody(
             MarkdownText(context, modifier = Modifier.fillMaxWidth())
         }
 
-        if (readOnly) ResolvedBanner(request)
+        // A one-way notification has nothing to answer: just the title and the message above.
+        if (readOnly && !request.isNotification) ResolvedBanner(request)
 
         if (request.options.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

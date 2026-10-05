@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Install the Loopback skill into Claude Code and/or Codex.
+"""Install the Loopback skills into Claude Code and/or Codex.
 
-Interactive: asks for the server URL, the agent key, which agents, and the scope (global or this
-project), writes ~/.config/loopback/config.json and copies SKILL.md + loopback.py into
-<base>/.claude/skills/loopback and/or <base>/.codex/skills/loopback.
+Interactive: asks for the server URL, the agent key, which skills (loopback = ask a question,
+loopback-notify = one-way notification), which agents, and the scope (global or this project).
+Writes ~/.config/loopback/config.json and copies each chosen skill's SKILL.md plus the shared
+loopback.py into <base>/.claude/skills/<skill> and/or <base>/.codex/skills/<skill>.
 
 Plain Python >= 3.8, standard library only.
 """
@@ -18,9 +19,14 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL_SRC = os.path.join(HERE, "skill")
-SKILL_NAME = "loopback"
+SCRIPT = "loopback.py"
 CONFIG_PATH = os.path.join(os.path.expanduser("~"), ".config", "loopback", "config.json")
 
+# (skill dir name under skill/ and under <base>/<agent>/skills/, what it's for, example command)
+SKILLS = [
+    ("loopback", "ask the user a question and wait for the answer", 'ask "Ping?" --option Pong'),
+    ("loopback-notify", "send a one-way notification, no answer expected", 'notify "Ping"'),
+]
 AGENTS = [("Claude", ".claude"), ("Codex", ".codex")]
 SCOPES = [("Global", os.path.expanduser("~")), ("This project", os.getcwd())]
 
@@ -106,23 +112,26 @@ def write_config(url, agent_key):
     print("✓ config  %s" % CONFIG_PATH)
 
 
-def install_skill(agent, skill_dir):
+def install_skill(agent, skill, skill_dir):
+    """Copies skill/<skill>/SKILL.md (with {{SKILL_DIR}} filled in) and the shared script into skill_dir."""
     os.makedirs(skill_dir, exist_ok=True)
-    with open(os.path.join(SKILL_SRC, "SKILL.md"), encoding="utf-8") as f:
+    with open(os.path.join(SKILL_SRC, skill, "SKILL.md"), encoding="utf-8") as f:
         skill_md = f.read().replace("{{SKILL_DIR}}", skill_dir)
     with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
         f.write(skill_md)
-    script = os.path.join(skill_dir, "loopback.py")
-    shutil.copyfile(os.path.join(SKILL_SRC, "loopback.py"), script)
+    script = os.path.join(skill_dir, SCRIPT)
+    shutil.copyfile(os.path.join(SKILL_SRC, SCRIPT), script)
     os.chmod(script, 0o755)
     print("✓ %-7s %s" % (agent, skill_dir))
 
 
 def main():
     existing = read_config()
-    print("Loopback skill installer\n")
+    print("Loopback skills installer\n")
     url = normalize_url(ask_text("Loopback server base URL", existing.get("url", "")))
     agent_key = ask_text("Agent key (LOOPBACK_AGENT_KEY)", existing.get("agentKey", ""), secret=True)
+    print()
+    skills = ask_choice("Install which skills?", ["%s — %s" % (n, what) for n, what, _ in SKILLS], multi=True, default=[1, 2])
     print()
     agents = ask_choice("Install for which agents?", [a for a, _ in AGENTS], multi=True, default=[1, 2])
     print()
@@ -134,9 +143,12 @@ def main():
     base = SCOPES[scope][1]
     for i in agents:
         name, dot_dir = AGENTS[i]
-        install_skill(name, os.path.join(base, dot_dir, "skills", SKILL_NAME))
-    print('\nAgents pick the skill up on their next session. Try:\n  python3 %s ask "Ping?" --option Pong'
-          % os.path.join(base, AGENTS[agents[0]][1], "skills", SKILL_NAME, "loopback.py"))
+        for j in skills:
+            skill = SKILLS[j][0]
+            install_skill(name, skill, os.path.join(base, dot_dir, "skills", skill))
+    first_skill, _, example = SKILLS[skills[0]]
+    print("\nAgents pick the skills up on their next session. Try:\n  python3 %s %s"
+          % (os.path.join(base, AGENTS[agents[0]][1], "skills", first_skill, SCRIPT), example))
     return 0
 
 

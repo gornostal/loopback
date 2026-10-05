@@ -19,6 +19,8 @@ data class Answer(
 data class LoopbackRequest(
     val id: String,
     val createdAt: String,
+    /** `ask` (wants an answer) or `notify` (one-way message, already resolved as `notified`). */
+    val kind: String = "ask",
     val status: String,
     val title: String,
     val context: String? = null,
@@ -29,6 +31,7 @@ data class LoopbackRequest(
     val answer: Answer? = null,
 ) {
     val isPending: Boolean get() = status == "pending"
+    val isNotification: Boolean get() = kind == "notify"
 }
 
 @Serializable

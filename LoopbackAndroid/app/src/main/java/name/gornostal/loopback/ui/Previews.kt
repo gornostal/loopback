@@ -104,8 +104,19 @@ private val cancelled = LoopbackRequest(
     source = "Dependabot agent",
 )
 
+private val notification = LoopbackRequest(
+    id = "Nt7qLm4xRe",
+    createdAt = ago(Duration.ofMinutes(40)),
+    kind = "notify",
+    status = "notified",
+    title = "Release v2.3 is live",
+    context = "Deployed at 14:02 UTC. **0 errors** in the first 5 minutes.\n\nNext: monitor for an hour.",
+    allowFreeText = false,
+    source = "Claude Code · api",
+)
+
 private val samplePending = listOf(pendingSingle, pendingMulti, pendingFreeTextOnly)
-private val sampleHistory = listOf(answered, cancelled)
+private val sampleHistory = listOf(notification, answered, cancelled)
 
 @Composable
 private fun PreviewTheme(content: @Composable () -> Unit) {
@@ -252,6 +263,18 @@ private fun RequestAnsweredPreview() = PreviewTheme {
 private fun RequestCancelledPreview() = PreviewTheme {
     RequestContent(
         request = cancelled,
+        loading = false,
+        submitting = false,
+        onBack = {},
+        onSubmit = { _, _, _ -> null },
+    )
+}
+
+@Preview
+@Composable
+private fun RequestNotificationPreview() = PreviewTheme {
+    RequestContent(
+        request = notification,
         loading = false,
         submitting = false,
         onBack = {},

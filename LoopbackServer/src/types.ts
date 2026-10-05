@@ -4,7 +4,13 @@ export interface RequestOption {
   description?: string;
 }
 
-export type RequestStatus = "pending" | "answered" | "cancelled";
+/**
+ * `ask` wants an answer and starts out `pending`. `notify` is one-way: the agent tells the human
+ * something, the server pushes it and stores it as `notified` so it shows up in the inbox history.
+ */
+export type RequestKind = "ask" | "notify";
+
+export type RequestStatus = "pending" | "answered" | "cancelled" | "notified";
 
 /** What the human sent back. */
 export interface Answer {
@@ -31,9 +37,20 @@ export interface CreateRequestBody {
   source?: string;
 }
 
+/** Body accepted by `POST /api/agent/notifications`. No options, no answer expected. */
+export interface CreateNotificationBody {
+  /** Headline. Shown as the push title. */
+  title: string;
+  /** The message itself, markdown allowed. */
+  context?: string;
+  /** Who is notifying, e.g. "claude-code". Shown in the inbox. */
+  source?: string;
+}
+
 export interface LoopbackRequest {
   id: string;
   createdAt: string;
+  kind: RequestKind;
   status: RequestStatus;
   title: string;
   context: string | null;

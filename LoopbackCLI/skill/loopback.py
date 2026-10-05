@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Loopback: ask a human a question over HTTP and wait for (or poll for) the answer.
+"""Loopback: ask a human a question over HTTP and wait for (or poll for) the answer, or just notify them.
 
-Plain Python >= 3.8, standard library only. Copied verbatim into agents' skill dirs by install.py.
+Plain Python >= 3.8, standard library only. Copied verbatim into agents' skill dirs by install.py
+(both the `loopback` and the `loopback-notify` skill ship this same file).
 
 Config: LOOPBACK_URL + LOOPBACK_AGENT_KEY env vars, else ~/.config/loopback/config.json {"url","agentKey"}.
 Uses the server's agent API: it can create requests and follow them by id, not list or answer them.
@@ -29,12 +30,13 @@ examples:
       --option "Deploy now :: run the migration and roll out" --option "Hold" \\
       --source my-project --timeout 300
   loopback.py ask "Merge PR #42?" --option Merge --option "Request changes" --no-wait
+  loopback.py notify "Build finished" --context "All 42 tests passed." --source my-project
   loopback.py wait <id> --timeout 300
   loopback.py status <id>
   loopback.py cancel <id>
 
 Prints JSON {id, status, title, answer?} on stdout.
-Exit codes: 0 answered (or created with --no-wait) · 2 cancelled ·
+Exit codes: 0 answered (or created with --no-wait, or notified) · 2 cancelled ·
             3 still pending (re-run "wait <id>") · 1 error or bad usage
 
 Config: LOOPBACK_URL + LOOPBACK_AGENT_KEY, or %s {"url", "agentKey"}.
@@ -122,7 +124,8 @@ def summarize(request):
 
 
 def exit_code_for(request):
-    return {"answered": EXIT_ANSWERED, "cancelled": EXIT_CANCELLED}.get(request["status"], EXIT_PENDING)
+    codes = {"answered": EXIT_ANSWERED, "notified": EXIT_ANSWERED, "cancelled": EXIT_CANCELLED}
+    return codes.get(request["status"], EXIT_PENDING)
 
 
 def emit(request):
@@ -147,6 +150,12 @@ def cmd_ask(config, args):
     return emit(wait_for_answer(config, created["id"], args.timeout))
 
 
+def cmd_notify(config, args):
+    """One-way: push a message to the phone and return at once. Nothing to wait for."""
+    body = {"title": args.title, "context": args.context, "source": args.source}
+    return emit(call(config, "POST", "/api/agent/notifications", {k: v for k, v in body.items() if v is not None}))
+
+
 def cmd_wait(config, args):
     return emit(wait_for_answer(config, args.id, args.timeout))
 
@@ -168,7 +177,7 @@ class Parser(argparse.ArgumentParser):
 def build_parser():
     parser = Parser(
         prog="loopback.py",
-        description="Ask the human a question through a push notification to their phone (Loopback).",
+        description="Ask the human a question, or send them a note, through a push notification to their phone (Loopback).",
         epilog=EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -185,6 +194,12 @@ def build_parser():
     ask.add_argument("--timeout", type=int, default=300, metavar="SECONDS", help="how long to block (default: 300)")
     ask.add_argument("--no-wait", action="store_true", help="print the new request's id and return immediately")
     ask.set_defaults(func=cmd_ask)
+
+    notify = sub.add_parser("notify", help="send a one-way notification; no answer expected, returns immediately")
+    notify.add_argument("title", help="one short headline; the notification title")
+    notify.add_argument("--context", help="markdown with the message itself")
+    notify.add_argument("--source", default="agent", help="who is notifying, ideally the project name; shown in the inbox (default: agent)")
+    notify.set_defaults(func=cmd_notify)
 
     wait = sub.add_parser("wait", help="block until a request is answered or cancelled")
     wait.add_argument("id")

@@ -11,13 +11,15 @@ agent ◀── long-poll answer ── Loopback server ◀── answer ── 
 
 The prompt the phone shows mirrors Claude Code's `AskUserQuestion`: a title, optional markdown context, a list of options with descriptions (single or multi-select), and an optional free-text "my answer" field.
 
+Agents can also send a one-way **notification** ("build finished", "deploy failed"): same push, same inbox, but nothing to answer and nobody waits.
+
 ## Repo
 
 | Dir | What |
 |---|---|
 | `LoopbackServer/` | Bun + TypeScript API server. SQLite storage, FCM push, long-polling. Zero runtime dependencies. |
 | `LoopbackAndroid/` | Kotlin / Jetpack Compose app. Inbox, request detail, settings, push handling. |
-| `LoopbackCLI/` | `install.py`: installs the **Loopback skill** (`SKILL.md` + `loopback.py`) into Claude Code and Codex. Plain Python, no dependencies. |
+| `LoopbackCLI/` | `install.py`: installs the **Loopback skills** (`loopback` to ask, `loopback-notify` to notify, each with `SKILL.md` + `loopback.py`) into Claude Code and Codex. Plain Python, no dependencies. |
 
 ## Server
 
@@ -43,7 +45,7 @@ The API has two halves, each with its own key:
 
 | Who | Prefix | Key | Can |
 |---|---|---|---|
-| **Agents** (skill, CLI, curl) | `/api/agent` | `LOOPBACK_AGENT_KEY` | Create requests, then fetch, wait on or cancel them **by id**. Can't list, answer or see devices. |
+| **Agents** (skill, CLI, curl) | `/api/agent` | `LOOPBACK_AGENT_KEY` | Create requests and notifications, then fetch, wait on or cancel them **by id**. Can't list, answer or see devices. |
 | **Android app** | `/api/app` | `LOOPBACK_APP_KEY` | List and read every request, answer, register for push. |
 
 Request ids are 128 random bits encoded in base58 (about 22 chars, e.g. `7Xq9KfJ2mVb4nRtYp8LwHc`). An agent can't list requests and the ids can't be guessed, so in practice an agent only reaches the requests it created itself. Send the key as `Authorization: Bearer <key>`. Using one half's key on the other half returns `401`.
@@ -53,6 +55,7 @@ Request ids are 128 random bits encoded in base58 (about 22 chars, e.g. `7Xq9KfJ
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/api/agent/requests[?wait=N]` | Create a request. Returns `201` with the request, including its `id`. With `wait`, blocks up to N s (max 600) and returns the request as it stands then: answered, cancelled or still pending. |
+| `POST` | `/api/agent/notifications` | Send a one-way notification: `{ "title", "context"?, "source"? }`. Pushed to the phone and stored with `kind: "notify"`, `status: "notified"`; returns `201` with the object. Nothing to wait for; `wait` returns it immediately and answering or cancelling it gives `409`. |
 | `GET` | `/api/agent/requests/:id` | Current state, instantly. |
 | `GET` | `/api/agent/requests/:id/wait?timeout=N` | Long-poll until answered or cancelled (default 60 s, max 600). Returns the current state on timeout. |
 | `DELETE` | `/api/agent/requests/:id` | Cancel a pending request. Dismisses the phone notification. `409` if it's already answered. |
@@ -61,7 +64,7 @@ Request ids are 128 random bits encoded in base58 (about 22 chars, e.g. `7Xq9KfJ
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/app/requests?status=pending&limit=100` | List. `status` = `pending` \| `answered` \| `cancelled` \| `all`, `limit` ≤ 500. Returns `{ "requests": [...] }`. |
+| `GET` | `/api/app/requests?status=pending&limit=100` | List. `status` = `pending` \| `answered` \| `cancelled` \| `notified` \| `all`, `limit` ≤ 500. Returns `{ "requests": [...] }`. |
 | `GET` | `/api/app/requests/:id` | Fetch one. |
 | `POST` | `/api/app/requests/:id/answer` | `{ "selected": ["Deploy"], "text": "but watch the logs" }`. `selected` must be labels from the request's `options`; more than one only when `multiSelect` is true. Wakes any agent waiting on it. `400` on an unknown label or too many picks, `409` if no longer pending. |
 | `POST` | `/api/app/devices` | `{ "token", "platform", "name" }`: register an FCM token. The app does this on its own. |
@@ -90,7 +93,8 @@ Request object (returned everywhere):
 ```jsonc
 {
   "id": "052f…", "createdAt": "2026-10-02T09:53:08.483Z",
-  "status": "pending" | "answered" | "cancelled",
+  "kind": "ask" | "notify",                    // notify → no options, no answer, status is always "notified"
+  "status": "pending" | "answered" | "cancelled" | "notified",
   "title": "…", "context": "…", "options": [...], "multiSelect": false, "allowFreeText": true, "source": "…",
   "answer": null | { "selected": ["Deploy"], "text": "…", "answeredAt": "…" }
 }
@@ -98,20 +102,28 @@ Request object (returned everywhere):
 
 ### Asking from an agent
 
-The easiest path is the skill. Install it once:
+The easiest path is the skills. Install them once:
 
 ```sh
 cd LoopbackCLI && ./install.py
 ```
 
-It asks for the server base URL, the agent key (`LOOPBACK_AGENT_KEY`), which agents (Claude, Codex or both)
-and the scope: **Global** (`~/.claude/skills/loopback`, `~/.codex/skills/loopback`) or **This project**
-(`./.claude/skills/loopback`, `./.codex/skills/loopback`, relative to the current directory). The URL and key
-go to `~/.config/loopback/config.json` (mode 600), never into the skill dir, so a project-scoped install
-is safe to commit. Re-run it to update; it offers the saved values as defaults.
+It asks for the server base URL, the agent key (`LOOPBACK_AGENT_KEY`), which skills to install, which
+agents (Claude, Codex or both) and the scope: **Global** (`~/.claude/skills/<skill>`,
+`~/.codex/skills/<skill>`) or **This project** (`./.claude/skills/<skill>`, `./.codex/skills/<skill>`,
+relative to the current directory). The URL and key go to `~/.config/loopback/config.json` (mode 600),
+never into the skill dirs, so a project-scoped install is safe to commit. Re-run it to update; it offers
+the saved values as defaults.
 
-The skill tells the agent when to reach for you and how to call the bundled script, which is plain
-Python 3 with no dependencies (run it without arguments for help):
+There are two skills, installed by default together:
+
+| Skill | What the agent uses it for |
+|---|---|
+| `loopback` | Ask you a question and wait for (or poll for) the answer. |
+| `loopback-notify` | Tell you something that needs no reply: a task finished, a deploy failed, "ping me when…". |
+
+Each skill tells the agent when to reach for you and how to call the bundled script, which is the same
+plain Python 3 file with no dependencies in both (run it without arguments for help):
 
 ```sh
 python3 ~/.claude/skills/loopback/loopback.py ask "Deploy api v2.3?" \
@@ -129,6 +141,14 @@ Humans can be slow, so the script supports two modes:
   `status <id>` (instant) or `wait <id>` (blocks) later.
 
 `cancel <id>` withdraws a pending request. The same commands work from your shell.
+
+The `loopback-notify` skill uses the same script's `notify` command. It returns immediately with exit 0:
+
+```sh
+python3 ~/.claude/skills/loopback-notify/loopback.py notify "Release v2.3 is live" \
+  --context "Deployed at 14:02 UTC. **0 errors** in the first 5 minutes." --source claude-code
+# → {"id":"…","status":"notified","title":"Release v2.3 is live"}
+```
 
 Without the CLI, plain curl works too (blocks up to 5 min):
 
@@ -152,10 +172,10 @@ First launch opens Settings: enter the server URL and the **app** key (`LOOPBACK
 
 Screens:
 
-- **Inbox** — Pending / History tabs, pull to refresh, refreshes itself when a push arrives.
-- **Request** — source, time, title, markdown context, options (radio or checkbox), "My answer" field, **Send answer**. Already-answered or cancelled requests open read-only.
+- **Inbox** — Pending / History tabs, pull to refresh, refreshes itself when a push arrives. Notifications land in History with a "Notification" badge.
+- **Request** — source, time, title, markdown context, options (radio or checkbox), "My answer" field, **Send answer**. Already-answered or cancelled requests open read-only; notifications show just the title and message.
 - **Settings** — server URL, app key, push status, re-register device.
 
 ## Status
 
-v0.1: single user, one app key + one shared agent key, Android only. Not yet: iOS, request expiry, answer edits, multiple users, web inbox.
+v0.1: single user, one app key + one shared agent key, Android only. Questions and notifications use separate Android notification channels ("Agent requests" is high priority, "Agent notifications" is default), so you can quieten one without the other. Not yet: iOS, request expiry, answer edits, multiple users, web inbox.

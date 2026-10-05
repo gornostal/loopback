@@ -98,6 +98,7 @@ fun StatusPill(request: LoopbackRequest) {
         "answered" -> "Answered" to colors.tertiary
         "cancelled" -> "Cancelled" to colors.error
         "pending" -> "Pending" to colors.primary
+        "notified" -> "Notification" to colors.secondary
         else -> request.status.replaceFirstChar { it.uppercase() } to colors.onSurfaceVariant
     }
     Surface(color = color.copy(alpha = 0.16f), contentColor = color, shape = CircleShape) {

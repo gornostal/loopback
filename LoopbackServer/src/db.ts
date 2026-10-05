@@ -1,11 +1,20 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import type { Answer, CreateRequestBody, Device, LoopbackRequest, RequestStatus } from "./types.ts";
+import type {
+  Answer,
+  CreateNotificationBody,
+  CreateRequestBody,
+  Device,
+  LoopbackRequest,
+  RequestKind,
+  RequestStatus,
+} from "./types.ts";
 
 interface RequestRow {
   id: string;
   created_at: string;
+  kind: RequestKind;
   status: RequestStatus;
   title: string;
   context: string | null;
@@ -51,12 +60,21 @@ export class Store {
         created_at TEXT NOT NULL
       );
     `);
+    this.migrate();
   }
 
+  /** Additive schema changes for databases created by older versions. */
+  private migrate() {
+    const columns = this.db.query<{ name: string }, []>("PRAGMA table_info(requests)").all().map((c) => c.name);
+    if (!columns.includes("kind")) {
+      this.db.exec("ALTER TABLE requests ADD COLUMN kind TEXT NOT NULL DEFAULT 'ask'");
+    }
+  }
+
+  /** A question for the human; starts out `pending` until answered or cancelled. */
   createRequest(body: CreateRequestBody): LoopbackRequest {
-    const req: LoopbackRequest = {
-      id: newId(),
-      createdAt: new Date().toISOString(),
+    return this.insert({
+      kind: "ask",
       status: "pending",
       title: body.title,
       context: body.context ?? null,
@@ -64,16 +82,34 @@ export class Store {
       multiSelect: body.multiSelect ?? false,
       allowFreeText: body.allowFreeText ?? true,
       source: body.source ?? null,
-      answer: null,
-    };
+    });
+  }
+
+  /** A one-way message; stored already resolved (`notified`) so nobody waits on it. */
+  createNotification(body: CreateNotificationBody): LoopbackRequest {
+    return this.insert({
+      kind: "notify",
+      status: "notified",
+      title: body.title,
+      context: body.context ?? null,
+      options: [],
+      multiSelect: false,
+      allowFreeText: false,
+      source: body.source ?? null,
+    });
+  }
+
+  private insert(fields: Omit<LoopbackRequest, "id" | "createdAt" | "answer">): LoopbackRequest {
+    const req: LoopbackRequest = { id: newId(), createdAt: new Date().toISOString(), ...fields, answer: null };
     this.db
       .query(
-        `INSERT INTO requests (id, created_at, status, title, context, options, multi_select, allow_free_text, source, answer)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
+        `INSERT INTO requests (id, created_at, kind, status, title, context, options, multi_select, allow_free_text, source, answer)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
       .run(
         req.id,
         req.createdAt,
+        req.kind,
         req.status,
         req.title,
         req.context,
@@ -167,6 +203,7 @@ function toRequest(row: RequestRow): LoopbackRequest {
   return {
     id: row.id,
     createdAt: row.created_at,
+    kind: row.kind,
     status: row.status,
     title: row.title,
     context: row.context,

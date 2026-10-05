@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import name.gornostal.loopback.ui.stripInlineMarkdown
 
 class LoopbackMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -21,6 +22,16 @@ class LoopbackMessagingService : FirebaseMessagingService() {
                     requestId = requestId,
                     title = data["title"] ?: "New request",
                     body = data["body"].orEmpty(),
+                    source = data["source"],
+                )
+                PushEvents.emit(requestId)
+            }
+            "notification" -> {
+                Notifications.showNotice(
+                    context = this,
+                    requestId = requestId,
+                    title = data["title"] ?: "Notification",
+                    body = stripInlineMarkdown(data["body"].orEmpty()),
                     source = data["source"],
                 )
                 PushEvents.emit(requestId)

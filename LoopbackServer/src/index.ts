@@ -1,7 +1,7 @@
 import type { BunRequest } from "bun";
 import { Store } from "./db.ts";
 import { Fcm } from "./fcm.ts";
-import type { CreateRequestBody, LoopbackRequest, RequestStatus } from "./types.ts";
+import type { CreateNotificationBody, CreateRequestBody, LoopbackRequest, RequestStatus } from "./types.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const APP_KEY = process.env.LOOPBACK_APP_KEY ?? process.env.LOOPBACK_API_KEY;
@@ -119,10 +119,27 @@ function pushForNewRequest(req: LoopbackRequest) {
     type: "request",
     requestId: req.id,
     title: req.title,
-    body: summary.length > 200 ? `${summary.slice(0, 197)}…` : summary,
+    body: truncate(summary, 200),
     source: req.source ?? "",
     createdAt: req.createdAt,
   });
+}
+
+/** One-way message: the body carries the whole context (collapsed), not just its first line. */
+function pushForNotification(req: LoopbackRequest) {
+  const text = (req.context ?? "").replace(/\s*\n\s*/g, " ").trim();
+  void pushToAllDevices({
+    type: "notification",
+    requestId: req.id,
+    title: req.title,
+    body: truncate(text, 400),
+    source: req.source ?? "",
+    createdAt: req.createdAt,
+  });
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
 function pushForCancelled(req: LoopbackRequest) {
@@ -214,6 +231,15 @@ function validateCreate(body: unknown): CreateRequestBody {
   };
 }
 
+function validateNotification(body: unknown): CreateNotificationBody {
+  if (!body || typeof body !== "object") throw new HttpError(400, "Body must be an object");
+  const b = body as Record<string, unknown>;
+  if (typeof b.title !== "string" || !b.title.trim()) throw new HttpError(400, "`title` is required");
+  if (b.context !== undefined && typeof b.context !== "string") throw new HttpError(400, "`context` must be a string");
+  if (b.source !== undefined && typeof b.source !== "string") throw new HttpError(400, "`source` must be a string");
+  return { title: b.title.trim(), context: b.context as string | undefined, source: b.source as string | undefined };
+}
+
 /**
  * Checks the labels the phone picked against the request: every label must be one of its options,
  * and a single-select request takes at most one. Duplicates are dropped, order follows the request's options.
@@ -255,12 +281,13 @@ const server = Bun.serve({
           "",
           "Agent API — Authorization: Bearer <LOOPBACK_AGENT_KEY>",
           "  POST   /api/agent/requests[?wait=N]          create a request (optionally wait N s for the answer)",
+          "  POST   /api/agent/notifications               send a one-way notification (no answer expected)",
           "  GET    /api/agent/requests/:id               fetch one",
           "  GET    /api/agent/requests/:id/wait?timeout=N  long-poll until answered/cancelled",
           "  DELETE /api/agent/requests/:id               cancel",
           "",
           "App API — Authorization: Bearer <LOOPBACK_APP_KEY>",
-          "  GET    /api/app/requests?status=pending      list (pending|answered|cancelled|all)",
+          "  GET    /api/app/requests?status=pending      list (pending|answered|cancelled|notified|all)",
           "  GET    /api/app/requests/:id                 fetch one",
           "  POST   /api/app/requests/:id/answer          { selected: string[], text?: string }",
           "  GET    /api/app/devices                      list registered devices",
@@ -280,6 +307,16 @@ const server = Bun.serve({
         pushForNewRequest(created);
         const wait = clampWait(new URL(req.url).searchParams.get("wait"));
         if (wait > 0) return json(await waitForResolution(created, wait));
+        return json(created, 201);
+      }),
+    },
+
+    "/api/agent/notifications": {
+      POST: agent(async (req) => {
+        const body = validateNotification(await readJson(req));
+        const created = store.createNotification(body);
+        console.log(`Notification ${created.id} from ${created.source ?? "unknown"}: ${created.title}`);
+        pushForNotification(created);
         return json(created, 201);
       }),
     },
@@ -310,8 +347,8 @@ const server = Bun.serve({
       GET: app((req) => {
         const url = new URL(req.url);
         const status = (url.searchParams.get("status") ?? "pending") as RequestStatus | "all";
-        if (!["pending", "answered", "cancelled", "all"].includes(status)) {
-          throw new HttpError(400, "status must be pending|answered|cancelled|all");
+        if (!["pending", "answered", "cancelled", "notified", "all"].includes(status)) {
+          throw new HttpError(400, "status must be pending|answered|cancelled|notified|all");
         }
         const limit = Math.min(Number(url.searchParams.get("limit") ?? 100) || 100, 500);
         return json({ requests: store.listRequests(status, limit) });
