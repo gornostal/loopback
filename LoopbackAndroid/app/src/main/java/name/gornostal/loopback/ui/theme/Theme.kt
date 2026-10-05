@@ -17,16 +17,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
- * Brand colours lifted from the logo: a deep navy→indigo backdrop, a cyan robot, a mint check
- * mark, a lavender/pink human, and a loop that runs cyan → violet → pink.
+ * Brand colours lifted from the logo, slightly desaturated for the UI: a deep navy→indigo
+ * backdrop, a cyan robot, a mint check mark, a lavender/pink human, and a loop that runs
+ * cyan → violet → pink.
  */
 object Brand {
     val Navy = Color(0xFF070E33)
     val Indigo = Color(0xFF111C5E)
-    val Cyan = Color(0xFF4FE3FF)
-    val Violet = Color(0xFF7C5CFF)
-    val Pink = Color(0xFFF2A6FF)
-    val Mint = Color(0xFF7CF5B4)
+    val Cyan = Color(0xFF5FCDE6)
+    val Violet = Color(0xFF8B74E8)
+    val Pink = Color(0xFFDFAEEB)
+    val Mint = Color(0xFF86DDAE)
 
     /** The loop from the logo; used for primary actions and small accents. */
     val Loop = Brush.horizontalGradient(listOf(Cyan, Violet, Pink))
@@ -41,7 +42,7 @@ private val Colors = darkColorScheme(
     onPrimaryContainer = Color(0xFFC2F3FF),
     inversePrimary = Color(0xFF006781),
 
-    secondary = Color(0xFFC9B6FF),
+    secondary = Color(0xFFC2B4F0),
     onSecondary = Color(0xFF2A1366),
     secondaryContainer = Color(0xFF3F2A8C),
     onSecondaryContainer = Color(0xFFEADFFF),
@@ -51,7 +52,7 @@ private val Colors = darkColorScheme(
     tertiaryContainer = Color(0xFF0C5A3B),
     onTertiaryContainer = Color(0xFFC6FFDC),
 
-    error = Color(0xFFFF8FB1),
+    error = Color(0xFFF093AE),
     onError = Color(0xFF4A0024),
     errorContainer = Color(0xFF6E1A3E),
     onErrorContainer = Color(0xFFFFD9E4),
@@ -100,7 +101,7 @@ fun Modifier.loopbackBackdrop(): Modifier = this.drawBehind {
     val violetRadius = size.width * 0.85f
     drawCircle(
         brush = Brush.radialGradient(
-            listOf(Brand.Violet.copy(alpha = 0.38f), Color.Transparent),
+            listOf(Brand.Violet.copy(alpha = 0.26f), Color.Transparent),
             center = violetCenter,
             radius = violetRadius,
         ),
@@ -111,7 +112,7 @@ fun Modifier.loopbackBackdrop(): Modifier = this.drawBehind {
     val cyanRadius = size.width * 0.7f
     drawCircle(
         brush = Brush.radialGradient(
-            listOf(Brand.Cyan.copy(alpha = 0.14f), Color.Transparent),
+            listOf(Brand.Cyan.copy(alpha = 0.09f), Color.Transparent),
             center = cyanCenter,
             radius = cyanRadius,
         ),

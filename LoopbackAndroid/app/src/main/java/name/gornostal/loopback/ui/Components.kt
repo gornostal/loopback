@@ -73,12 +73,37 @@ fun AccentButton(
     }
 }
 
-/** Round badge with the first letter of the agent/source name, on the loop gradient. */
+/**
+ * Muted avatar tints; every one is light enough for navy text. A source name always maps to the
+ * same entry (see [sourceColor]), so an agent keeps its colour across the inbox and request screen.
+ */
+private val SourcePalette = listOf(
+    Color(0xFF7FC8DD), // sky
+    Color(0xFFA48FE0), // lavender
+    Color(0xFFDBA3D8), // orchid
+    Color(0xFF85CFAE), // sage
+    Color(0xFFE0B280), // sand
+    Color(0xFFE39C9C), // rose
+    Color(0xFF8FB6E6), // periwinkle
+    Color(0xFFC9C77E), // olive
+    Color(0xFF86D2CB), // teal
+    Color(0xFFD6A1B8), // mauve
+)
+
+/** Deterministic tint for a source name: same name → same colour, case/whitespace-insensitive. */
+fun sourceColor(source: String?): Color {
+    val key = source?.trim()?.lowercase().orEmpty()
+    if (key.isEmpty()) return Color(0xFF9AA3C8)
+    // String.hashCode is specified (s[0]*31^(n-1) + ...), so it's stable across runs and devices.
+    return SourcePalette[Math.floorMod(key.hashCode(), SourcePalette.size)]
+}
+
+/** Round badge with the first letter of the agent/source name, tinted per source. */
 @Composable
 fun SourceAvatar(source: String?, size: Dp = 28.dp) {
     val initial = source?.trim()?.firstOrNull { it.isLetterOrDigit() }?.uppercaseChar()?.toString() ?: "?"
     Box(
-        Modifier.size(size).background(Brand.Loop, CircleShape),
+        Modifier.size(size).background(sourceColor(source), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         Text(
