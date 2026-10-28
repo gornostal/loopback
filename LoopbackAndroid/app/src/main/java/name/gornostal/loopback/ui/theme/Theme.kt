@@ -17,17 +17,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
 /**
- * Brand colours lifted from the logo, slightly desaturated for the UI: a deep navy→indigo
+ * Brand colours lifted from the logo, desaturated and dimmed for comfortable night-time use: a near-black navy→indigo
  * backdrop, a cyan robot, a mint check mark, a lavender/pink human, and a loop that runs
  * cyan → violet → pink.
  */
 object Brand {
-    val Navy = Color(0xFF070E33)
-    val Indigo = Color(0xFF111C5E)
-    val Cyan = Color(0xFF5FCDE6)
-    val Violet = Color(0xFF8B74E8)
-    val Pink = Color(0xFFDFAEEB)
-    val Mint = Color(0xFF86DDAE)
+    val Navy = Color(0xFF040820)
+    val Indigo = Color(0xFF0B1440)
+    val Cyan = Color(0xFF53B6CE)
+    val Violet = Color(0xFF7C68D2)
+    val Pink = Color(0xFFC89DD4)
+    val Mint = Color(0xFF78C69C)
 
     /** The loop from the logo; used for primary actions and small accents. */
     val Loop = Brush.horizontalGradient(listOf(Cyan, Violet, Pink))
@@ -58,23 +58,23 @@ private val Colors = darkColorScheme(
     onErrorContainer = Color(0xFFFFD9E4),
 
     background = Brand.Navy,
-    onBackground = Color(0xFFE4E8FF),
+    onBackground = Color(0xFFDADFF7),
     surface = Brand.Navy,
-    onSurface = Color(0xFFE4E8FF),
-    surfaceVariant = Color(0xFF1C2866),
-    onSurfaceVariant = Color(0xFFAEB7E3),
+    onSurface = Color(0xFFDADFF7),
+    surfaceVariant = Color(0xFF141D4A),
+    onSurfaceVariant = Color(0xFFA5AED8),
     surfaceDim = Brand.Navy,
-    surfaceBright = Color(0xFF27387C),
-    surfaceContainerLowest = Color(0xFF040926),
-    surfaceContainerLow = Color(0xFF0C153F),
-    surfaceContainer = Color(0xFF111C4D),
-    surfaceContainerHigh = Color(0xFF17245C),
-    surfaceContainerHighest = Color(0xFF1E2D6C),
-    inverseSurface = Color(0xFFE4E8FF),
-    inverseOnSurface = Color(0xFF0C153F),
+    surfaceBright = Color(0xFF1C295E),
+    surfaceContainerLowest = Color(0xFF020516),
+    surfaceContainerLow = Color(0xFF070D2A),
+    surfaceContainer = Color(0xFF0B1335),
+    surfaceContainerHigh = Color(0xFF101A42),
+    surfaceContainerHighest = Color(0xFF16224F),
+    inverseSurface = Color(0xFFDADFF7),
+    inverseOnSurface = Color(0xFF070D2A),
 
-    outline = Color(0xFF6C76B0),
-    outlineVariant = Color(0xFF2A3774),
+    outline = Color(0xFF576194),
+    outlineVariant = Color(0xFF1D2858),
     scrim = Color.Black,
 )
 
@@ -101,7 +101,7 @@ fun Modifier.loopbackBackdrop(): Modifier = this.drawBehind {
     val violetRadius = size.width * 0.85f
     drawCircle(
         brush = Brush.radialGradient(
-            listOf(Brand.Violet.copy(alpha = 0.26f), Color.Transparent),
+            listOf(Brand.Violet.copy(alpha = 0.15f), Color.Transparent),
             center = violetCenter,
             radius = violetRadius,
         ),
@@ -112,7 +112,7 @@ fun Modifier.loopbackBackdrop(): Modifier = this.drawBehind {
     val cyanRadius = size.width * 0.7f
     drawCircle(
         brush = Brush.radialGradient(
-            listOf(Brand.Cyan.copy(alpha = 0.09f), Color.Transparent),
+            listOf(Brand.Cyan.copy(alpha = 0.05f), Color.Transparent),
             center = cyanCenter,
             radius = cyanRadius,
         ),
