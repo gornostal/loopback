@@ -19,6 +19,7 @@ Agents can also send a one-way **notification** ("build finished", "deploy faile
 |---|---|
 | `LoopbackServer/` | Bun + TypeScript API server. SQLite storage, FCM push, long-polling. Zero runtime dependencies. |
 | `LoopbackAndroid/` | Kotlin / Jetpack Compose app. Inbox, request detail, settings, push handling. |
+| `LoopbackDesktop/` | Tauri 2 desktop app (Linux, macOS, Windows). Same inbox, live over SSE, desktop notifications, tray. |
 | `LoopbackCLI/` | `install.py`: installs the **Loopback skills** (`loopback` to ask, `loopback-notify` to notify, each with `SKILL.md` + `loopback.py`) into Claude Code and Codex. Plain Python, no dependencies. |
 
 ## Server
@@ -46,7 +47,7 @@ The API has two halves, each with its own key:
 | Who | Prefix | Key | Can |
 |---|---|---|---|
 | **Agents** (skill, CLI, curl) | `/api/agent` | `LOOPBACK_AGENT_KEY` | Create requests and notifications, then fetch, wait on or cancel them **by id**. Can't list, answer or see devices. |
-| **Android app** | `/api/app` | `LOOPBACK_APP_KEY` | List and read every request, answer, register for push. |
+| **Android & desktop apps** | `/api/app` | `LOOPBACK_APP_KEY` | List and read every request, answer, register for push, stream changes. |
 
 Request ids are 128 random bits encoded in base58 (about 22 chars, e.g. `7Xq9KfJ2mVb4nRtYp8LwHc`). An agent can't list requests and the ids can't be guessed, so in practice an agent only reaches the requests it created itself. Send the key as `Authorization: Bearer <key>`. Using one half's key on the other half returns `401`.
 
@@ -68,10 +69,20 @@ Request ids are 128 random bits encoded in base58 (about 22 chars, e.g. `7Xq9KfJ
 | `GET` | `/api/app/requests/:id` | Fetch one. |
 | `POST` | `/api/app/requests/:id/answer` | `{ "selected": ["Deploy"], "text": "but watch the logs" }`. `selected` must be labels from the request's `options`; more than one only when `multiSelect` is true. Wakes any agent waiting on it. `400` on an unknown label or too many picks, `409` if no longer pending. |
 | `POST` | `/api/app/requests/:id/read` | Mark a notification read (sets `readAt`; idempotent). The app calls this when you open one. `409` for a non-notification. |
+| `GET` | `/api/app/events` | Server-sent events stream of every change (see below). The desktop app uses it instead of FCM. |
 | `POST` | `/api/app/devices` | `{ "token", "platform", "name" }`: register an FCM token. The app does this on its own. |
 | `GET` | `/api/app/devices` | List registered devices (tokens truncated). |
 
 `GET /health` needs no key.
+
+`GET /api/app/events` (`text/event-stream`) opens with `event: hello` and then sends one event per change, with the
+full request object as `data`: `request` (new question), `notification` (new one-way message), `answered`,
+`cancelled` and `read`. A `: ping` comment every 20 s keeps the connection alive. There is no replay: clients refetch
+their list on every `hello`, so whatever happened while they were disconnected is picked up then.
+
+```sh
+curl -N -H "Authorization: Bearer $LOOPBACK_APP_KEY" http://localhost:8787/api/app/events
+```
 
 Create body:
 
@@ -178,6 +189,31 @@ Screens:
 - **Request** — source, time, title, markdown context, options (radio or checkbox), "My answer" field, **Send answer**. Already-answered or cancelled requests open read-only; notifications show just the title and message.
 - **Settings** — server URL, app key, push status, re-register device.
 
+## Desktop app
+
+```sh
+cd LoopbackDesktop
+bun install
+bun run tauri dev              # or: bun run tauri build  → bundles in src-tauri/target/release/bundle/
+```
+
+Needs Rust and the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) (on Debian/Ubuntu:
+`libwebkit2gtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev`). On first launch it opens Settings: enter the server
+URL and the **app** key and click **Save & connect**. The config lives in the OS config dir (e.g.
+`~/.config/name.gornostal.loopback.desktop/config.json`, mode 600).
+
+- **Live**: one SSE connection to `/api/app/events`, held by the Rust side (no CORS, keeps running with the window
+  closed), reconnecting with backoff. No Firebase needed.
+- **Desktop notifications** for new questions and notifications while the window isn't focused. On Linux, clicking one
+  opens the request, single-select questions with up to 3 options get one-click answer buttons, and the notification
+  is withdrawn once the request is answered, cancelled or read elsewhere. macOS and Windows show plain notifications.
+- **Inbox / History** with the same request view as the phone: markdown context, options, "My answer". Keys: `↑`/`↓`
+  (or `j`/`k`) to move, `1`–`9` to pick an option, `Ctrl+Enter` to send.
+- **Install on Linux** for your user (binary in `~/.local/bin`, icons, desktop entry with a "Start in tray" action):
+  `./install-linux.sh` (builds first; `--no-build` to reuse the last build, `--uninstall` to remove).
+- **Tray**: closing the window keeps Loopback running in the tray. `loopback-desktop --hidden` starts it without
+  opening the window (for autostart); launching it again brings the running instance forward.
+
 ## Status
 
-v0.1: single user, one app key + one shared agent key, Android only. Questions and notifications use separate Android notification channels ("Agent requests" is high priority, "Agent notifications" is default), so you can quieten one without the other. Not yet: iOS, request expiry, answer edits, multiple users, web inbox.
+v0.1: single user, one app key + one shared agent key, Android only. Questions and notifications use separate Android notification channels ("Agent requests" is high priority, "Agent notifications" is default), so you can quieten one without the other. The desktop app gets the same requests live over SSE. Not yet: iOS, request expiry, answer edits, multiple users, web inbox.

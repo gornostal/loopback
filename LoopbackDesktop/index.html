@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Loopback</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <header class="brand">
+          <img src="/logo.png" alt="" class="brand-logo" />
+          <span class="brand-name">Loopback</span>
+          <div id="toolbar"></div>
+        </header>
+        <div id="conn" class="conn" role="status"></div>
+        <nav class="tabs" role="tablist">
+          <button data-tab="inbox" role="tab">Inbox <span class="count"></span></button>
+          <button data-tab="history" role="tab">History</button>
+        </nav>
+        <ul id="list"></ul>
+      </aside>
+      <main id="detail"></main>
+    </div>
+    <div id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

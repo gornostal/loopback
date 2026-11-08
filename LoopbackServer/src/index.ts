@@ -13,6 +13,7 @@ const MAX_WAIT_SECONDS = 600;
 const HISTORY_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000; // ~2 months
 const HISTORY_KEEP = 50;
 const PRUNE_INTERVAL_MS = 60 * 1000;
+const SSE_PING_MS = 20 * 1000;
 
 if (!APP_KEY || !AGENT_KEY) {
   console.error("LOOPBACK_APP_KEY and LOOPBACK_AGENT_KEY must be set. Copy .env.example to .env and set two secrets.");
@@ -84,6 +85,67 @@ function waitForResolution(req: LoopbackRequest, timeoutSeconds: number): Promis
       resolve(r);
     };
     set.add(done);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// App event stream (SSE): every change to a request, for clients that keep a connection open
+// (the desktop app) instead of relying on FCM.
+// ---------------------------------------------------------------------------
+
+/** `request` = new question, `notification` = new one-way message; the rest are state changes. */
+type AppEventType = "request" | "notification" | "answered" | "cancelled" | "read";
+
+const eventSubscribers = new Set<(type: AppEventType, req: LoopbackRequest) => void>();
+
+function broadcast(type: AppEventType, req: LoopbackRequest) {
+  for (const send of eventSubscribers) send(type, req);
+}
+
+/**
+ * Opens an SSE stream. Sends `hello` first (clients refetch their list on it, so nothing missed while
+ * disconnected is lost), then one event per change with the full request as `data`, and a comment
+ * ping every SSE_PING_MS to keep proxies and Bun's idle timeout from closing the connection.
+ */
+function eventStream(req: Request): Response {
+  const encoder = new TextEncoder();
+  let cleanup = () => {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const write = (chunk: string) => {
+        try {
+          controller.enqueue(encoder.encode(chunk));
+        } catch {
+          cleanup();
+        }
+      };
+      const send = (type: AppEventType, request: LoopbackRequest) =>
+        write(`event: ${type}\ndata: ${JSON.stringify(request)}\n\n`);
+      const ping = setInterval(() => write(": ping\n\n"), SSE_PING_MS);
+      cleanup = () => {
+        clearInterval(ping);
+        eventSubscribers.delete(send);
+      };
+      eventSubscribers.add(send);
+      req.signal.addEventListener("abort", () => {
+        cleanup();
+        try {
+          controller.close();
+        } catch {}
+      });
+      write(`retry: 3000\nevent: hello\ndata: {}\n\n`);
+    },
+    cancel() {
+      cleanup();
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
   });
 }
 
@@ -291,6 +353,7 @@ const server = Bun.serve({
           "  GET    /api/app/requests/:id                 fetch one",
           "  POST   /api/app/requests/:id/answer          { selected: string[], text?: string }",
           "  POST   /api/app/requests/:id/read            mark a notification read",
+          "  GET    /api/app/events                       SSE stream of request changes (desktop app)",
           "  GET    /api/app/devices                      list registered devices",
           "  POST   /api/app/devices                      { token, platform, name? } register push token",
         ].join("\n"),
@@ -306,6 +369,7 @@ const server = Bun.serve({
         const created = store.createRequest(body);
         console.log(`New request ${created.id} from ${created.source ?? "unknown"}: ${created.title}`);
         pushForNewRequest(created);
+        broadcast("request", created);
         const wait = clampWait(new URL(req.url).searchParams.get("wait"));
         if (wait > 0) return json(await waitForResolution(created, wait));
         return json(created, 201);
@@ -318,6 +382,7 @@ const server = Bun.serve({
         const created = store.createNotification(body);
         console.log(`Notification ${created.id} from ${created.source ?? "unknown"}: ${created.title}`);
         pushForNotification(created);
+        broadcast("notification", created);
         return json(created, 201);
       }),
     },
@@ -330,6 +395,7 @@ const server = Bun.serve({
         if (!cancelled) throw new HttpError(409, "Request is no longer pending");
         notifyWaiters(cancelled);
         pushForCancelled(cancelled);
+        broadcast("cancelled", cancelled);
         return json(cancelled);
       }),
     },
@@ -371,17 +437,23 @@ const server = Bun.serve({
         if (!answered) throw new HttpError(409, "Request is no longer pending");
         console.log(`Request ${answered.id} answered: ${JSON.stringify(answered.answer)}`);
         notifyWaiters(answered);
+        broadcast("answered", answered);
         return json(answered);
       }),
     },
 
     "/api/app/requests/:id/read": {
       POST: app((req) => {
-        getOr404(req.params.id);
+        const current = getOr404(req.params.id);
         const read = store.markRead(req.params.id);
         if (!read) throw new HttpError(409, "Only notifications can be marked read");
+        if (read.readAt !== current.readAt) broadcast("read", read);
         return json(read);
       }),
+    },
+
+    "/api/app/events": {
+      GET: app((req) => eventStream(req)),
     },
 
     "/api/app/devices": {
