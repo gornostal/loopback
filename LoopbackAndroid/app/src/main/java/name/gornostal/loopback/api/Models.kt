@@ -29,9 +29,15 @@ data class LoopbackRequest(
     val allowFreeText: Boolean = true,
     val source: String? = null,
     val answer: Answer? = null,
+    /** When a notification was opened in the app; null while unread (and always for `ask`). */
+    val readAt: String? = null,
 ) {
     val isPending: Boolean get() = status == "pending"
     val isNotification: Boolean get() = kind == "notify"
+    val isUnread: Boolean get() = isNotification && readAt == null
+
+    /** Belongs on the Pending tab: a question awaiting an answer or a notification not yet read. */
+    val needsAttention: Boolean get() = isPending || isUnread
 }
 
 @Serializable

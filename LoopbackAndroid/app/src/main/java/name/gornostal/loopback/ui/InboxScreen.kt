@@ -92,8 +92,7 @@ fun InboxContent(
         !configured -> "Not connected to a server yet"
         history -> if (requests.isEmpty()) "Nothing answered yet" else "${requests.size} resolved"
         requests.isEmpty() -> "All caught up"
-        requests.size == 1 -> "1 request is waiting for you"
-        else -> "${requests.size} requests are waiting for you"
+        else -> waitingSummary(requests)
     }
 
     Box(modifier.fillMaxSize()) {
@@ -170,14 +169,14 @@ internal fun RequestCard(request: LoopbackRequest, onClick: () -> Unit) {
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (request.isPending) colors.surfaceContainerHigh.copy(alpha = 0.85f)
+            containerColor = if (request.needsAttention) colors.surfaceContainerHigh.copy(alpha = 0.85f)
             else colors.surfaceContainerLow.copy(alpha = 0.85f),
             contentColor = colors.onSurface,
         ),
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
-            // Pending cards carry the logo's loop as a stripe; resolved ones go quiet.
-            if (request.isPending) Box(Modifier.width(4.dp).fillMaxHeight().background(Brand.LoopVertical))
+            // Pending questions and unread notifications carry the logo's loop as a stripe; the rest go quiet.
+            if (request.needsAttention) Box(Modifier.width(4.dp).fillMaxHeight().background(Brand.LoopVertical))
             Column(
                 Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -222,6 +221,18 @@ internal fun RequestCard(request: LoopbackRequest, onClick: () -> Unit) {
             }
         }
     }
+}
+
+/** "2 requests and 1 notification are waiting for you". */
+private fun waitingSummary(requests: List<LoopbackRequest>): String {
+    val asks = requests.count { it.isPending }
+    val notes = requests.count { it.isUnread }
+    val parts = listOfNotNull(
+        asks.takeIf { it > 0 }?.let { if (it == 1) "1 request" else "$it requests" },
+        notes.takeIf { it > 0 }?.let { if (it == 1) "1 notification" else "$it notifications" },
+    )
+    val verb = if (asks + notes == 1) "is" else "are"
+    return "${parts.joinToString(" and ")} $verb waiting for you"
 }
 
 fun answerSummary(request: LoopbackRequest): String {

@@ -64,9 +64,10 @@ Request ids are 128 random bits encoded in base58 (about 22 chars, e.g. `7Xq9KfJ
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/app/requests?status=pending&limit=100` | List. `status` = `pending` \| `answered` \| `cancelled` \| `notified` \| `all`, `limit` ≤ 500. Returns `{ "requests": [...] }`. |
+| `GET` | `/api/app/requests?status=pending&limit=100` | List. `status` = `pending` \| `answered` \| `cancelled` \| `notified` \| `inbox` \| `all`, `limit` ≤ 500. `inbox` = pending requests plus unread notifications. Returns `{ "requests": [...] }`. |
 | `GET` | `/api/app/requests/:id` | Fetch one. |
 | `POST` | `/api/app/requests/:id/answer` | `{ "selected": ["Deploy"], "text": "but watch the logs" }`. `selected` must be labels from the request's `options`; more than one only when `multiSelect` is true. Wakes any agent waiting on it. `400` on an unknown label or too many picks, `409` if no longer pending. |
+| `POST` | `/api/app/requests/:id/read` | Mark a notification read (sets `readAt`; idempotent). The app calls this when you open one. `409` for a non-notification. |
 | `POST` | `/api/app/devices` | `{ "token", "platform", "name" }`: register an FCM token. The app does this on its own. |
 | `GET` | `/api/app/devices` | List registered devices (tokens truncated). |
 
@@ -96,7 +97,8 @@ Request object (returned everywhere):
   "kind": "ask" | "notify",                    // notify → no options, no answer, status is always "notified"
   "status": "pending" | "answered" | "cancelled" | "notified",
   "title": "…", "context": "…", "options": [...], "multiSelect": false, "allowFreeText": true, "source": "…",
-  "answer": null | { "selected": ["Deploy"], "text": "…", "answeredAt": "…" }
+  "answer": null | { "selected": ["Deploy"], "text": "…", "answeredAt": "…" },
+  "readAt": null | "…"                         // notify only: when you opened it in the app; null while unread
 }
 ```
 
@@ -172,7 +174,7 @@ First launch opens Settings: enter the server URL and the **app** key (`LOOPBACK
 
 Screens:
 
-- **Inbox** — Pending / History tabs, pull to refresh, refreshes itself when a push arrives. Notifications land in History with a "Notification" badge.
+- **Inbox** — Pending / History tabs, pull to refresh, refreshes itself when a push arrives. Unread notifications sit in Pending alongside questions; opening one marks it read and moves it to History with a "Notification" badge.
 - **Request** — source, time, title, markdown context, options (radio or checkbox), "My answer" field, **Send answer**. Already-answered or cancelled requests open read-only; notifications show just the title and message.
 - **Settings** — server URL, app key, push status, re-register device.
 

@@ -115,8 +115,15 @@ private val notification = LoopbackRequest(
     source = "Claude Code · api",
 )
 
-private val samplePending = listOf(pendingSingle, pendingMulti, pendingFreeTextOnly)
-private val sampleHistory = listOf(notification, answered, cancelled)
+private val unreadNotification = notification.copy(
+    id = "Nu8rKp2zQa",
+    createdAt = ago(Duration.ofMinutes(3)),
+    title = "Test suite finished",
+    context = "412 passed, **0 failed** in 3m 12s.",
+)
+
+private val samplePending = listOf(unreadNotification, pendingSingle, pendingMulti, pendingFreeTextOnly)
+private val sampleHistory = listOf(notification.copy(readAt = ago(Duration.ofMinutes(30))), answered, cancelled)
 
 @Composable
 private fun PreviewTheme(content: @Composable () -> Unit) {

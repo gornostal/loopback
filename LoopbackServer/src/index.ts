@@ -287,9 +287,10 @@ const server = Bun.serve({
           "  DELETE /api/agent/requests/:id               cancel",
           "",
           "App API — Authorization: Bearer <LOOPBACK_APP_KEY>",
-          "  GET    /api/app/requests?status=pending      list (pending|answered|cancelled|notified|all)",
+          "  GET    /api/app/requests?status=pending      list (pending|answered|cancelled|notified|inbox|all)",
           "  GET    /api/app/requests/:id                 fetch one",
           "  POST   /api/app/requests/:id/answer          { selected: string[], text?: string }",
+          "  POST   /api/app/requests/:id/read            mark a notification read",
           "  GET    /api/app/devices                      list registered devices",
           "  POST   /api/app/devices                      { token, platform, name? } register push token",
         ].join("\n"),
@@ -346,9 +347,9 @@ const server = Bun.serve({
     "/api/app/requests": {
       GET: app((req) => {
         const url = new URL(req.url);
-        const status = (url.searchParams.get("status") ?? "pending") as RequestStatus | "all";
-        if (!["pending", "answered", "cancelled", "notified", "all"].includes(status)) {
-          throw new HttpError(400, "status must be pending|answered|cancelled|notified|all");
+        const status = (url.searchParams.get("status") ?? "pending") as RequestStatus | "all" | "inbox";
+        if (!["pending", "answered", "cancelled", "notified", "inbox", "all"].includes(status)) {
+          throw new HttpError(400, "status must be pending|answered|cancelled|notified|inbox|all");
         }
         const limit = Math.min(Number(url.searchParams.get("limit") ?? 100) || 100, 500);
         return json({ requests: store.listRequests(status, limit) });
@@ -371,6 +372,15 @@ const server = Bun.serve({
         console.log(`Request ${answered.id} answered: ${JSON.stringify(answered.answer)}`);
         notifyWaiters(answered);
         return json(answered);
+      }),
+    },
+
+    "/api/app/requests/:id/read": {
+      POST: app((req) => {
+        getOr404(req.params.id);
+        const read = store.markRead(req.params.id);
+        if (!read) throw new HttpError(409, "Only notifications can be marked read");
+        return json(read);
       }),
     },
 

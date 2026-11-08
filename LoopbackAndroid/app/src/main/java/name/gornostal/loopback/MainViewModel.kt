@@ -100,8 +100,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             loading = true
             error = null
             try {
-                pending = api.listRequests("pending")
-                history = api.listRequests("all").filter { !it.isPending }
+                pending = api.listRequests("inbox")
+                history = api.listRequests("all").filter { !it.needsAttention }
             } catch (e: Exception) {
                 error = e.message ?: "Could not reach server"
             } finally {
@@ -115,13 +115,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             openLoading = true
             try {
-                openRequest = api.getRequest(id)
+                val request = api.getRequest(id)
+                openRequest = request
+                if (request.isUnread) markRead(api, id)
             } catch (e: Exception) {
                 error = e.message ?: "Could not load request"
             } finally {
                 openLoading = false
             }
         }
+    }
+
+    /** Opening a notification reads it: it leaves Pending and its system notification goes away. */
+    private suspend fun markRead(api: LoopbackApi, id: String) {
+        val read = api.markRead(id)
+        if (openRequest?.id == id) openRequest = read
+        Notifications.dismiss(getApplication(), id)
+        refresh()
     }
 
     /** Submits the answer; returns an error message or null on success. */

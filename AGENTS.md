@@ -29,6 +29,6 @@ Flow: an agent `POST`s a request (title, markdown context, options, optional fre
 - CLI: `./install.py` in `LoopbackCLI`. Both scripts must stay plain Python ≥ 3.8, standard library only (`loopback.py` is copied verbatim into agents' skill dirs).
 - Android: `./gradlew assembleDebug`. Versions live in `gradle/libs.versions.toml`; AGP 9 with built-in Kotlin.
 - API shape is documented in `README.md`; keep `api/Models.kt`, `src/types.ts` and `skill/loopback.py` in sync when changing it.
-- Requests have a `kind`: `ask` (pending until answered/cancelled) or `notify` (stored as `notified`, nothing to wait on). Notifications use their own Android channel.
+- Requests have a `kind`: `ask` (pending until answered/cancelled) or `notify` (stored as `notified`, nothing to wait on; sits in the app's Pending tab until opened, which sets `readAt`). Notifications use their own Android channel.
 - API is split: `/api/agent/*` (`LOOPBACK_AGENT_KEY`; create + follow by id, no listing) and `/api/app/*` (`LOOPBACK_APP_KEY`; the phone). Request ids are unguessable base58 and act as the agent's capability; keep them that way.
 - Single user, one app key + one shared agent key for v1. Don't add multi-tenancy without discussing.

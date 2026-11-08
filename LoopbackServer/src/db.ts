@@ -23,6 +23,7 @@ interface RequestRow {
   allow_free_text: number;
   source: string | null;
   answer: string | null;
+  read_at: string | null;
 }
 
 interface DeviceRow {
@@ -69,6 +70,11 @@ export class Store {
     if (!columns.includes("kind")) {
       this.db.exec("ALTER TABLE requests ADD COLUMN kind TEXT NOT NULL DEFAULT 'ask'");
     }
+    if (!columns.includes("read_at")) {
+      this.db.exec("ALTER TABLE requests ADD COLUMN read_at TEXT");
+      // Notifications stored before read tracking existed count as already read.
+      this.db.exec("UPDATE requests SET read_at = created_at WHERE kind = 'notify'");
+    }
   }
 
   /** A question for the human; starts out `pending` until answered or cancelled. */
@@ -99,8 +105,14 @@ export class Store {
     });
   }
 
-  private insert(fields: Omit<LoopbackRequest, "id" | "createdAt" | "answer">): LoopbackRequest {
-    const req: LoopbackRequest = { id: newId(), createdAt: new Date().toISOString(), ...fields, answer: null };
+  private insert(fields: Omit<LoopbackRequest, "id" | "createdAt" | "answer" | "readAt">): LoopbackRequest {
+    const req: LoopbackRequest = {
+      id: newId(),
+      createdAt: new Date().toISOString(),
+      ...fields,
+      answer: null,
+      readAt: null,
+    };
     this.db
       .query(
         `INSERT INTO requests (id, created_at, kind, status, title, context, options, multi_select, allow_free_text, source, answer)
@@ -126,14 +138,31 @@ export class Store {
     return row ? toRequest(row) : null;
   }
 
-  listRequests(status: RequestStatus | "all", limit = 100): LoopbackRequest[] {
+  /** `inbox` = what needs the human: pending questions plus notifications not yet read. */
+  listRequests(status: RequestStatus | "all" | "inbox", limit = 100): LoopbackRequest[] {
     const rows =
       status === "all"
         ? this.db.query<RequestRow, [number]>("SELECT * FROM requests ORDER BY created_at DESC LIMIT ?").all(limit)
-        : this.db
-            .query<RequestRow, [string, number]>("SELECT * FROM requests WHERE status = ? ORDER BY created_at DESC LIMIT ?")
-            .all(status, limit);
+        : status === "inbox"
+          ? this.db
+              .query<RequestRow, [number]>(
+                `SELECT * FROM requests WHERE status = 'pending' OR (kind = 'notify' AND read_at IS NULL)
+                 ORDER BY created_at DESC LIMIT ?`,
+              )
+              .all(limit)
+          : this.db
+              .query<RequestRow, [string, number]>("SELECT * FROM requests WHERE status = ? ORDER BY created_at DESC LIMIT ?")
+              .all(status, limit);
     return rows.map(toRequest);
+  }
+
+  /** Marks a notification read. Returns null if it doesn't exist or isn't a notification; idempotent otherwise. */
+  markRead(id: string): LoopbackRequest | null {
+    const result = this.db
+      .query("UPDATE requests SET read_at = COALESCE(read_at, ?) WHERE id = ? AND kind = 'notify'")
+      .run(new Date().toISOString(), id);
+    if (result.changes === 0) return null;
+    return this.getRequest(id);
   }
 
   /** Records an answer. Returns null if the request doesn't exist or is no longer pending. */
@@ -155,8 +184,9 @@ export class Store {
   }
 
   /**
-   * Deletes resolved (answered/cancelled) requests that are older than `maxAgeMs` or outside the
+   * Deletes resolved (answered/cancelled/read) requests that are older than `maxAgeMs` or outside the
    * most recent `keep`. Pending requests are never touched: agents may still be waiting on them.
+   * Unread notifications are kept too, so they stay in the inbox until the human opens them.
    * Returns the number of rows removed.
    */
   pruneHistory(maxAgeMs: number, keep: number): number {
@@ -165,6 +195,7 @@ export class Store {
       .query(
         `DELETE FROM requests
          WHERE status != 'pending'
+           AND NOT (kind = 'notify' AND read_at IS NULL)
            AND (
              created_at < ?
              OR id NOT IN (
@@ -212,6 +243,7 @@ function toRequest(row: RequestRow): LoopbackRequest {
     allowFreeText: row.allow_free_text === 1,
     source: row.source,
     answer: row.answer ? JSON.parse(row.answer) : null,
+    readAt: row.read_at,
   };
 }
 

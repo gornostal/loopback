@@ -28,6 +28,10 @@ class LoopbackApi(private val baseUrl: String, private val apiKey: String) {
     suspend fun answer(id: String, selected: List<String>, text: String?): LoopbackRequest =
         json.decodeFromString(post("/api/app/requests/$id/answer", json.encodeToString(AnswerBody(selected, text))))
 
+    /** Marks a notification read so it moves from Pending to History. */
+    suspend fun markRead(id: String): LoopbackRequest =
+        json.decodeFromString(post("/api/app/requests/$id/read", "{}"))
+
     suspend fun registerDevice(token: String, name: String) {
         post("/api/app/devices", json.encodeToString(RegisterDeviceBody(token = token, name = name)))
     }

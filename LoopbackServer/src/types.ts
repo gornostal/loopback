@@ -59,6 +59,8 @@ export interface LoopbackRequest {
   allowFreeText: boolean;
   source: string | null;
   answer: Answer | null;
+  /** When the human opened a notification in the app; null while unread (and always for `ask`). */
+  readAt: string | null;
 }
 
 export interface Device {
